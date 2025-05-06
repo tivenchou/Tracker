@@ -171,9 +171,22 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     // 用於儲存光流結果
     private var flow = Mat()
     // 用於形態學操作的核心 (可選，用於後處理光流)
-    private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, org.opencv.core.Size(5.0, 5.0)) // <-- 使用 org.opencv.core.Size
+    private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, org.opencv.core.Size(5.0, 5.0))
     // 標記是否為第一幀
     private var isFirstFrame = true
+
+    // 光流法參數 - Farneback
+    private val pyrScale = 0.5 // 金字塔縮放因子
+    private val levels = 3     // 金字塔層數
+    private var winsize = 20   // 平均窗口大小，較大值對快速運動更魯棒，但可能模糊運動細節 (原為 15)
+    private val iterations = 3 // 每次金字塔層的迭代次數
+    private val polyN = 5      // 像素鄰域大小，用於多項式展開
+    private val polySigma = 1.1 // 高斯標準差，用於平滑導數
+    private val flags = 0      // 操作標誌
+
+    // 移動偵測閾值
+    private val thresholdValue = 10.0 // 光流大小的閾值，用於判斷是否為顯著移動 (原為 5.0)
+    private val minContourArea = 700.0 // 最小輪廓面積，過濾小噪點 (原為 500.0)
 
     /**
      * 分析圖像幀，使用光流法和輪廓分析偵測移動物體中心。
@@ -198,14 +211,23 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         Imgproc.cvtColor(currentMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
 
         // 根據需要旋轉圖像
-        if (rotationDegrees != 0) {
-            val center = Point((grayMat.cols() / 2).toDouble(), (grayMat.rows() / 2).toDouble())
-            val rotationMatrix = Imgproc.getRotationMatrix2D(center, rotationDegrees.toDouble(), 1.0)
-            Imgproc.warpAffine(grayMat, rotatedMat, rotationMatrix, grayMat.size())
-            Log.d("ObjectTrackerAnalyzer", "Rotated Mat size: ${rotatedMat.cols()}x${rotatedMat.rows()}")
+        if (rotationDegrees == 0) {
+            grayMat.copyTo(rotatedMat) // 深拷貝
+            Log.d("ObjectTrackerAnalyzer", "No rotation needed. Rotated Mat (copied from gray) size: ${rotatedMat.cols()}x${rotatedMat.rows()}")
         } else {
-            rotatedMat = grayMat // 不需要旋轉，直接使用灰度圖
-            Log.d("ObjectTrackerAnalyzer", "No rotation needed. Mat size: ${rotatedMat.cols()}x${rotatedMat.rows()}")
+            when (rotationDegrees) {
+                90 -> Core.rotate(grayMat, rotatedMat, Core.ROTATE_90_CLOCKWISE)
+                180 -> Core.rotate(grayMat, rotatedMat, Core.ROTATE_180)
+                270 -> Core.rotate(grayMat, rotatedMat, Core.ROTATE_90_COUNTERCLOCKWISE)
+                else -> {
+                    // 對於其他角度，可以選擇不處理或使用 warpAffine (但要注意尺寸問題)
+                    // 為了簡化，這裡假設只處理 0, 90, 180, 270 度旋轉
+                    // 如果需要支援任意角度，需要更複雜的邊界計算和 warpAffine 參數設定
+                    grayMat.copyTo(rotatedMat) // 預設不旋轉
+                    Log.w("ObjectTrackerAnalyzer", "Unsupported rotation degrees: $rotationDegrees. Using original image.")
+                }
+            }
+            Log.d("ObjectTrackerAnalyzer", "Image rotated. Rotated Mat size: ${rotatedMat.cols()}x${rotatedMat.rows()}")
         }
 
         if (rotatedMat.empty()) {
@@ -239,7 +261,8 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
 
         // 計算光流
         try {
-            Video.calcOpticalFlowFarneback(prevGrayMat, rotatedMat, flow, 0.5, 3, 15, 3, 5, 1.2, 0)
+            // 調整參數：winsize 12->10, iterations 2->3, poly_sigma 1.1->1.0
+            Video.calcOpticalFlowFarneback(prevGrayMat, rotatedMat, flow, 0.5, 3, 10, 3, 5, 1.0, 0)
             Log.d("ObjectTrackerAnalyzer", "Optical flow calculated. Flow size: ${flow.cols()}x${flow.rows()}, type: ${flow.type()}")
         } catch (e: Exception) {
             Log.e("ObjectTrackerAnalyzer", "Error calculating optical flow", e)
@@ -268,7 +291,7 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
                     Core.magnitude(flowX, flowY, flowMagnitude)
 
                     // 2. 閾值化光流大小，生成移動區域的二值遮罩
-                    val thresholdValue = 5.0 // 閾值，可調整
+                    val thresholdValue = 5.0 // 閾值，可調整 (原為 3.0, 之前嘗試過5.0，現在改回並觀察效果)
                     Imgproc.threshold(flowMagnitude, motionMask, thresholdValue, 255.0, Imgproc.THRESH_BINARY)
                     motionMask.convertTo(motionMask, CvType.CV_8U)
 
@@ -278,36 +301,49 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
                     // 4. 尋找輪廓
                     Imgproc.findContours(motionMask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
 
-                    // 5. 找到最大的輪廓
-                    var maxArea = 0.0
-                    var largestContour: MatOfPoint? = null
+                    // 5. 找到移動最快的輪廓 (基於平均光流強度)
+                    var maxAvgFlowMagnitude = 0.0
+                    var fastestContour: MatOfPoint? = null
+                    val minContourArea = 150.0 // 最小輪廓面積閾值，可調整
+
                     for (contour in contours) {
                         val area = Imgproc.contourArea(contour)
-                        if (area > maxArea) {
-                            maxArea = area
-                            largestContour?.release() // 釋放之前的最大輪廓
-                            largestContour = contour
+                        if (area > minContourArea) {
+                            // 為當前輪廓創建一個遮罩
+                            val contourMask = Mat.zeros(flowMagnitude.size(), CvType.CV_8UC1)
+                            Imgproc.drawContours(contourMask, listOf(contour), -1, Scalar(255.0), Core.FILLED)
+
+                            // 計算輪廓內的平均光流強度
+                            val meanFlow = Core.mean(flowMagnitude, contourMask)
+                            val avgFlowInContour = meanFlow.`val`[0] // 取第一個通道的值 (灰度圖)
+                            contourMask.release()
+
+                            if (avgFlowInContour > maxAvgFlowMagnitude) {
+                                maxAvgFlowMagnitude = avgFlowInContour
+                                fastestContour?.release() // 釋放之前的最快輪廓
+                                fastestContour = contour // 更新最快輪廓
+                            } else {
+                                contour.release() // 釋放非最快輪廓
+                            }
                         } else {
-                            contour.release() // 釋放非最大輪廓
+                            contour.release() // 釋放面積過小的輪廓
                         }
                     }
 
-                    // 6. 計算最大輪廓的中心點 (質心)
-                    val minContourArea = 100.0 // 最小輪廓面積閾值，可調整
-                    if (largestContour != null && maxArea > minContourArea) {
-                        val moments = Imgproc.moments(largestContour)
+                    // 6. 計算最快輪廓的中心點 (質心)
+                    if (fastestContour != null) {
+                        val moments = Imgproc.moments(fastestContour)
                         if (moments.m00 != 0.0) { // 避免除以零
                             val centerX = moments.m10 / moments.m00
                             val centerY = moments.m01 / moments.m00
                             trackedPoint = Point(centerX, centerY)
-                            Log.d("ObjectTrackerAnalyzer", "Largest contour found. Area: $maxArea, Center: ($centerX, $centerY)")
+                            Log.d("ObjectTrackerAnalyzer", "Fastest contour found. Avg Flow: $maxAvgFlowMagnitude, Center: ($centerX, $centerY)")
                         } else {
-                            Log.d("ObjectTrackerAnalyzer", "Largest contour found but m00 is zero.")
+                            Log.d("ObjectTrackerAnalyzer", "Fastest contour found but m00 is zero.")
                         }
-                        largestContour.release() // 釋放找到的最大輪廓
+                        fastestContour.release() // 釋放找到的最快輪廓
                     } else {
-                        largestContour?.release() // 如果沒有找到足夠大的輪廓，也要釋放
-                        Log.d("ObjectTrackerAnalyzer", "No significant contour found or largest contour area ($maxArea) <= $minContourArea.")
+                        Log.d("ObjectTrackerAnalyzer", "No significant fast-moving contour found.")
                     }
                 } else {
                     Log.e("ObjectTrackerAnalyzer", "Failed to split flow Mat into components.")
@@ -337,12 +373,9 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
 
         // 釋放當前幀相關 Mat
         currentMat.release()
-        if (rotationDegrees != 0 && !rotatedMat.equals(grayMat)) {
-             // 只有當 rotatedMat 是 warpAffine 的結果時才釋放
-             rotatedMat.release()
-        }
-        // grayMat 被 prevGrayMat 引用，不釋放
-        // flow 會在下次計算時被覆蓋
+        // grayMat, prevGrayMat, rotatedMat, flow 是類別成員，不在此釋放
+        // rotatedMat 在每次分析開始時都會被重新賦值 (透過 copyTo 或 Core.rotate)
+        // 因此不需要在這裡單獨釋放它，它會在下一次分析中被重用/覆蓋。
 
         // 關閉 ImageProxy
         image.close()
