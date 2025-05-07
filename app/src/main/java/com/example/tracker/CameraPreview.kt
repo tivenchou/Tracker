@@ -169,9 +169,15 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     private var prevGrayMat = Mat()
     private var prevPoints: MatOfPoint2f? = null
     private val shakeThreshold = 5.0 // 晃動閾值，可調整
+    private val movementThresholdStable = 2.0 // 判斷為穩定的晃動閾值
 
     // MOG2 背景扣除器
     private var bgSubtractor: BackgroundSubtractorMOG2? = null
+    private val minHistory = 100 // history 最小值
+    private val maxHistory = 1000 // history 最大值
+    private var currentHistory = 500 // 當前 history 值，初始為預設值
+    private val historyStep = 50 // history 調整步伐
+
     // 用於儲存當前幀的灰度圖
     private var grayMat = Mat()
     // 用於儲存旋轉後的圖像
@@ -189,25 +195,17 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
      */
     /**
      * 初始化背景扣除器 (MOG2)。
+     * @param history 背景模型的歷史幀數。
      * 調整參數以提高對顏色與背景相近的移動物體的偵測能力。
      * 確保只在 OpenCV 初始化後調用。
      */
-    private fun initializeBgSubtractor() {
-        if (bgSubtractor == null) {
-            // 創建 MOG2 背景扣除器
-            // history: 影響背景模型的學習速度。預設 500。
-            // varThreshold: 方差閾值，用於判斷像素是否屬於背景模型。
-            //   較低的值會使模型對變化更敏感，但也可能引入更多噪點。預設 16，這裡調整為 10。
-            // detectShadows: 是否偵測陰影。啟用陰影偵測有助於區分陰影和實際移動物體。預設 true。
-            bgSubtractor = Video.createBackgroundSubtractorMOG2(500, 10.0, true)
-            Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized with varThreshold=10.0 and detectShadows=true.")
-        }
+    private fun initializeBgSubtractor(history: Int) {
+        // 釋放舊的 bgSubtractor (如果存在)
+        bgSubtractor?.clear()
+        bgSubtractor = Video.createBackgroundSubtractorMOG2(history, 10.0, true)
+        Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized with history=$history, varThreshold=10.0 and detectShadows=true.")
     }
 
-    /**
-     * 分析圖像幀，使用 MOG2 背景扣除和輪廓分析偵測移動物體中心。
-     * @param image The image proxy containing the frame data.
-     */
     /**
      * 分析圖像幀，使用光流法偵測相機晃動，若晃動不大則使用 MOG2 背景扣除和輪廓分析偵測移動物體中心。
      * @param image The image proxy containing the frame data.
@@ -217,9 +215,6 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         Log.d("ObjectTrackerAnalyzer", "analyze() called")
         val rotationDegrees = image.imageInfo.rotationDegrees
         Log.d("ObjectTrackerAnalyzer", "Image rotation: $rotationDegrees degrees")
-
-        // 確保背景扣除器已初始化 (MOG2)
-        // initializeBgSubtractor() // 移至晃動判斷之後
 
         val mediaImage = image.image ?: run {
             Log.e("ObjectTrackerAnalyzer", "Image is null, closing image and returning.")
@@ -274,6 +269,7 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
             rotatedMat = currentGrayMat.clone() // 如果不需要旋轉，直接複製 currentGrayMat
         }
 
+        var needsBgSubtractorReinit = bgSubtractor == null
         // --- 光流法相機晃動偵測 ---
         if (!prevGrayMat.empty() && prevPoints != null && prevPoints!!.toArray().isNotEmpty()) {
             val nextPoints = MatOfPoint2f()
@@ -301,10 +297,13 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
                 val avgDx = totalDx / validPointsCount
                 val avgDy = totalDy / validPointsCount
                 val avgMovement = kotlin.math.sqrt(avgDx * avgDx + avgDy * avgDy)
-                Log.d("ObjectTrackerAnalyzer", "Average movement: $avgMovement, Valid points: $validPointsCount")
+                Log.d("ObjectTrackerAnalyzer", "Average movement: $avgMovement, Valid points: $validPointsCount, Current history: $currentHistory")
 
-                if (avgMovement > shakeThreshold) {
-                    Log.w("ObjectTrackerAnalyzer", "Camera shake detected (movement: $avgMovement > threshold: $shakeThreshold), skipping object detection.")
+                val oldHistory = currentHistory
+                if (avgMovement > shakeThreshold) { // 晃動較大
+                    Log.w("ObjectTrackerAnalyzer", "Camera shake detected (movement: $avgMovement > threshold: $shakeThreshold)")
+                    currentHistory = kotlin.math.max(minHistory, currentHistory - historyStep)
+                    // 如果晃動過大，則跳過物件偵測
                     onObjectTracked(null, rotatedMat.width(), rotatedMat.height())
                     // 更新 prevGrayMat 和 prevPoints 以便下一幀比較
                     rotatedMat.copyTo(prevGrayMat)
@@ -314,10 +313,24 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
                     prevPoints = MatOfPoint2f(*newFeatures.toArray())
                     newFeatures.release()
 
+                    if (oldHistory != currentHistory) {
+                        needsBgSubtractorReinit = true
+                        Log.d("ObjectTrackerAnalyzer", "History changed due to shake: $oldHistory -> $currentHistory. Reinitializing MOG2.")
+                    }
+
                     currentGrayMat.release()
-                    // rotatedMat is now prevGrayMat, fgMask not used yet
                     image.close()
-                    return
+                    return // 晃動大時直接返回，不進行 MOG2
+                } else if (avgMovement < movementThresholdStable) { // 畫面穩定
+                    currentHistory = kotlin.math.min(maxHistory, currentHistory + historyStep)
+                    Log.d("ObjectTrackerAnalyzer", "Camera stable (movement: $avgMovement < threshold: $movementThresholdStable)")
+                } else { // 晃動不大也不算特別穩定，history 維持或微調 (可選)
+                    // 可以選擇在此處不改變 history，或者根據晃動程度進行更細微的調整
+                }
+
+                if (oldHistory != currentHistory) {
+                    needsBgSubtractorReinit = true
+                    Log.d("ObjectTrackerAnalyzer", "History changed: $oldHistory -> $currentHistory. Reinitializing MOG2.")
                 }
             }
             nextPoints.release()
@@ -335,7 +348,9 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         // --- 光流法結束 ---
 
         // 確保背景扣除器已初始化 (MOG2)
-        initializeBgSubtractor()
+        if (needsBgSubtractorReinit) {
+            initializeBgSubtractor(currentHistory)
+        }
 
         // 如果晃動不大，則繼續 MOG2
         // 應用背景扣除 (注意：MOG2 應該在 rotatedMat 上操作，因為它是當前處理的灰階圖)
