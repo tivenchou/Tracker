@@ -24,6 +24,7 @@ import org.opencv.android.OpenCVLoader
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.MatOfDouble // 新增導入
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
 import org.opencv.core.Scalar
@@ -178,6 +179,14 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     private var currentHistory = 500 // 當前 history 值，初始為預設值
     private val historyStep = 50 // history 調整步伐
 
+    // MOG2 varThreshold 相關參數
+    private val minVarThreshold = 8.0 // varThreshold 最小值
+    private val maxVarThreshold = 50.0 // varThreshold 最大值
+    private var currentVarThreshold = 16.0 // 當前 varThreshold 值，OpenCV 預設為 16
+    private val varThresholdStep = 2.0 // varThreshold 調整步伐 (暫未使用，直接映射)
+    private val minStdDevForContrast = 10.0 // 用於對比度調整的最小標準差
+    private val maxStdDevForContrast = 60.0 // 用於對比度調整的最大標準差
+
     // 用於儲存當前幀的灰度圖
     private var grayMat = Mat()
     // 用於儲存旋轉後的圖像
@@ -187,7 +196,12 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     // 用於形態學操作的核心
     private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, org.opencv.core.Size(5.0, 5.0))
     // 最小輪廓面積，過濾小噪點
-    private val minContourArea = 50.0 // 250 根據需要調整
+    // private val minContourArea = 50.0 // 250 根據需要調整 (舊的固定值)
+    private val minMinContourArea = 10.0 // minContourArea 的最小值
+    private val maxMinContourArea = 200.0 // minContourArea 的最大值
+    private var currentMinContourArea = 100.0 // 當前的 minContourArea，初始值
+    private val minContourAreaStep = 10.0 // minContourArea 調整的步長
+    private var frameCountForMinContourAreaAdjust = 0 // 用於 minContourArea 調整的幀計數器
 
     /**
      * 初始化背景扣除器。
@@ -196,14 +210,15 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     /**
      * 初始化背景扣除器 (MOG2)。
      * @param history 背景模型的歷史幀數。
+     * @param varThreshold 像素值與模型之間平方馬氏距離的閾值，用於判斷像素是否屬於背景。
      * 調整參數以提高對顏色與背景相近的移動物體的偵測能力。
      * 確保只在 OpenCV 初始化後調用。
      */
-    private fun initializeBgSubtractor(history: Int) {
+    private fun initializeBgSubtractor(history: Int, varThreshold: Double) {
         // 釋放舊的 bgSubtractor (如果存在)
         bgSubtractor?.clear()
-        bgSubtractor = Video.createBackgroundSubtractorMOG2(history, 10.0, true)
-        Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized with history=$history, varThreshold=10.0 and detectShadows=true.")
+        bgSubtractor = Video.createBackgroundSubtractorMOG2(history, varThreshold, true)
+        Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized with history=$history, varThreshold=$varThreshold and detectShadows=true.")
     }
 
     /**
@@ -270,6 +285,26 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         }
 
         var needsBgSubtractorReinit = bgSubtractor == null
+        // --- 計算對比度並調整 varThreshold ---
+        val meanMat = MatOfDouble()
+        val stdDevMat = MatOfDouble()
+        Core.meanStdDev(rotatedMat, meanMat, stdDevMat)
+        val contrastStdDev = if (stdDevMat.rows() > 0 && stdDevMat.cols() > 0) stdDevMat[0, 0][0] else 0.0
+        meanMat.release()
+        stdDevMat.release()
+
+        val oldVarThreshold = currentVarThreshold
+        // 線性映射標準差到 varThreshold 範圍
+        val normalizedStdDev = (contrastStdDev - minStdDevForContrast) / (maxStdDevForContrast - minStdDevForContrast)
+        val clampedNormalizedStdDev = kotlin.math.max(0.0, kotlin.math.min(1.0, normalizedStdDev))
+        currentVarThreshold = minVarThreshold + clampedNormalizedStdDev * (maxVarThreshold - minVarThreshold)
+        Log.d("ObjectTrackerAnalyzer", "Contrast stdDev: $contrastStdDev, New varThreshold: $currentVarThreshold")
+
+        if (kotlin.math.abs(oldVarThreshold - currentVarThreshold) > 0.1) { // 如果 varThreshold 變化顯著
+            needsBgSubtractorReinit = true
+            Log.d("ObjectTrackerAnalyzer", "varThreshold changed: $oldVarThreshold -> $currentVarThreshold. Reinitializing MOG2.")
+        }
+
         // --- 光流法相機晃動偵測 ---
         if (!prevGrayMat.empty() && prevPoints != null && prevPoints!!.toArray().isNotEmpty()) {
             val nextPoints = MatOfPoint2f()
@@ -349,7 +384,7 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
 
         // 確保背景扣除器已初始化 (MOG2)
         if (needsBgSubtractorReinit) {
-            initializeBgSubtractor(currentHistory)
+            initializeBgSubtractor(currentHistory, currentVarThreshold)
         }
 
         // 如果晃動不大，則繼續 MOG2
@@ -378,7 +413,7 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         var maxArea = 0.0
         for (contour in contours) {
             val area = Imgproc.contourArea(contour)
-            if (area > minContourArea && area > maxArea) {
+            if (area > currentMinContourArea && area > maxArea) { // 使用 currentMinContourArea
                 maxArea = area
                 largestContour = contour
             }
@@ -403,6 +438,22 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         // fgMask 在下一幀會被重用或重新賦值
         for (contour in contours) {
             contour.release()
+        }
+
+        // 動態調整 minContourArea
+        frameCountForMinContourAreaAdjust++
+        if (frameCountForMinContourAreaAdjust >= 30) {
+            if (currentHistory == maxHistory && centerPoint == null) {
+                // 當 history 為最大值且未偵測到移動物體時，降低 minContourArea
+                currentMinContourArea = kotlin.math.max(minMinContourArea, currentMinContourArea - minContourAreaStep)
+                Log.d("ObjectTrackerAnalyzer", "Adjusting minContourArea down to: $currentMinContourArea")
+            } else if (currentHistory != maxHistory) {
+                // 當 history 不為最大值時，增加 minContourArea (直到偵測到物體或達到上限)
+                // 這裡的邏輯是如果 history 不是最大，代表可能有晃動或剛穩定，可以嘗試提高偵測靈敏度
+                currentMinContourArea = kotlin.math.min(maxMinContourArea, currentMinContourArea + minContourAreaStep)
+                Log.d("ObjectTrackerAnalyzer", "Adjusting minContourArea up to: $currentMinContourArea")
+            }
+            frameCountForMinContourAreaAdjust = 0 // 重置計數器
         }
 
         // 回調結果
