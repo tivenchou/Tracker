@@ -31,6 +31,9 @@ import org.opencv.imgproc.Moments // 修正導入
 import org.opencv.imgproc.Imgproc
 import org.opencv.video.BackgroundSubtractorMOG2
 import org.opencv.video.Video // 新增導入 for Video.createBackgroundSubtractorMOG2()
+import org.opencv.core.MatOfPoint2f // 新增導入 for 光流法
+import org.opencv.core.MatOfByte    // 新增導入 for 光流法
+import org.opencv.core.TermCriteria // 新增導入 for 光流法
 
 // 移除重複導入
 import java.util.concurrent.ExecutorService
@@ -162,6 +165,10 @@ fun CameraPreview(
  * @param onObjectTracked 回調函數，傳遞追蹤到的物體中心點座標 (相對於預覽畫面)，如果未偵測到則傳遞 null。
  */
 private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, Int) -> Unit) : ImageAnalysis.Analyzer {
+    // 用於光流法
+    private var prevGrayMat = Mat()
+    private var prevPoints: MatOfPoint2f? = null
+    private val shakeThreshold = 5.0 // 晃動閾值，可調整
 
     // MOG2 背景扣除器
     private var bgSubtractor: BackgroundSubtractorMOG2? = null
@@ -174,21 +181,35 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
     // 用於形態學操作的核心
     private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, org.opencv.core.Size(5.0, 5.0))
     // 最小輪廓面積，過濾小噪點
-    private val minContourArea = 1000.0 // 根據需要調整
+    private val minContourArea = 50.0 // 250 根據需要調整
 
     /**
      * 初始化背景扣除器。
      * 確保只在 OpenCV 初始化後調用。
      */
+    /**
+     * 初始化背景扣除器 (MOG2)。
+     * 調整參數以提高對顏色與背景相近的移動物體的偵測能力。
+     * 確保只在 OpenCV 初始化後調用。
+     */
     private fun initializeBgSubtractor() {
         if (bgSubtractor == null) {
-            bgSubtractor = Video.createBackgroundSubtractorMOG2()
-            Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized.")
+            // 創建 MOG2 背景扣除器
+            // history: 影響背景模型的學習速度。預設 500。
+            // varThreshold: 方差閾值，用於判斷像素是否屬於背景模型。
+            //   較低的值會使模型對變化更敏感，但也可能引入更多噪點。預設 16，這裡調整為 10。
+            // detectShadows: 是否偵測陰影。啟用陰影偵測有助於區分陰影和實際移動物體。預設 true。
+            bgSubtractor = Video.createBackgroundSubtractorMOG2(500, 10.0, true)
+            Log.d("ObjectTrackerAnalyzer", "BackgroundSubtractorMOG2 initialized with varThreshold=10.0 and detectShadows=true.")
         }
     }
 
     /**
      * 分析圖像幀，使用 MOG2 背景扣除和輪廓分析偵測移動物體中心。
+     * @param image The image proxy containing the frame data.
+     */
+    /**
+     * 分析圖像幀，使用光流法偵測相機晃動，若晃動不大則使用 MOG2 背景扣除和輪廓分析偵測移動物體中心。
      * @param image The image proxy containing the frame data.
      */
     @ExperimentalGetImage
@@ -197,8 +218,8 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         val rotationDegrees = image.imageInfo.rotationDegrees
         Log.d("ObjectTrackerAnalyzer", "Image rotation: $rotationDegrees degrees")
 
-        // 確保背景扣除器已初始化
-        initializeBgSubtractor()
+        // 確保背景扣除器已初始化 (MOG2)
+        // initializeBgSubtractor() // 移至晃動判斷之後
 
         val mediaImage = image.image ?: run {
             Log.e("ObjectTrackerAnalyzer", "Image is null, closing image and returning.")
@@ -229,22 +250,95 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         // 將 YUV 轉換為灰度圖 (直接使用 Y 平面)
         // grayMat = Mat(mediaImage.height, mediaImage.width, CvType.CV_8UC1, yBuffer)
         // 或者從 YUV 轉換
-        Imgproc.cvtColor(yuvMat, grayMat, Imgproc.COLOR_YUV2GRAY_NV21)
+        val currentGrayMat = Mat() // 當前幀的灰階圖，用於光流法
+        Imgproc.cvtColor(yuvMat, currentGrayMat, Imgproc.COLOR_YUV2GRAY_NV21)
         yuvMat.release() // 釋放 yuvMat
+
+        // 將 currentGrayMat 複製給 grayMat 以便後續 MOG2 使用 (如果需要)
+        currentGrayMat.copyTo(grayMat)
 
         // 根據需要旋轉圖像
         if (rotationDegrees != 0) {
-            Core.rotate(grayMat, rotatedMat, when (rotationDegrees) {
+            Core.rotate(currentGrayMat, rotatedMat, when (rotationDegrees) { // 使用 currentGrayMat 進行旋轉以用於光流法
                 90 -> Core.ROTATE_90_CLOCKWISE
                 180 -> Core.ROTATE_180
                 270 -> Core.ROTATE_90_COUNTERCLOCKWISE
-                else -> return // 不支援的旋轉角度
+                else -> { // 不支援的旋轉角度
+                    Log.e("ObjectTrackerAnalyzer", "Unsupported rotation: $rotationDegrees")
+                    currentGrayMat.release()
+                    image.close()
+                    return
+                }
             })
         } else {
-            rotatedMat = grayMat.clone() // 如果不需要旋轉，直接複製
+            rotatedMat = currentGrayMat.clone() // 如果不需要旋轉，直接複製 currentGrayMat
         }
 
-        // 應用背景扣除
+        // --- 光流法相機晃動偵測 ---
+        if (!prevGrayMat.empty() && prevPoints != null && prevPoints!!.toArray().isNotEmpty()) {
+            val nextPoints = MatOfPoint2f()
+            val status = MatOfByte()
+            val err = org.opencv.core.MatOfFloat() // Explicitly use org.opencv.core.MatOfFloat
+
+            Video.calcOpticalFlowPyrLK(prevGrayMat, rotatedMat, prevPoints, nextPoints, status, err)
+
+            val statusArray = status.toArray()
+            val prevPointsArray = prevPoints!!.toArray()
+            val nextPointsArray = nextPoints.toArray()
+            var totalDx = 0.0
+            var totalDy = 0.0
+            var validPointsCount = 0
+
+            for (i in prevPointsArray.indices) {
+                if (statusArray[i].toInt() == 1) {
+                    totalDx += kotlin.math.abs(nextPointsArray[i].x - prevPointsArray[i].x)
+                    totalDy += kotlin.math.abs(nextPointsArray[i].y - prevPointsArray[i].y)
+                    validPointsCount++
+                }
+            }
+
+            if (validPointsCount > 0) {
+                val avgDx = totalDx / validPointsCount
+                val avgDy = totalDy / validPointsCount
+                val avgMovement = kotlin.math.sqrt(avgDx * avgDx + avgDy * avgDy)
+                Log.d("ObjectTrackerAnalyzer", "Average movement: $avgMovement, Valid points: $validPointsCount")
+
+                if (avgMovement > shakeThreshold) {
+                    Log.w("ObjectTrackerAnalyzer", "Camera shake detected (movement: $avgMovement > threshold: $shakeThreshold), skipping object detection.")
+                    onObjectTracked(null, rotatedMat.width(), rotatedMat.height())
+                    // 更新 prevGrayMat 和 prevPoints 以便下一幀比較
+                    rotatedMat.copyTo(prevGrayMat)
+                    // 重新偵測特徵點，因為畫面可能已大幅改變
+                    val newFeatures = MatOfPoint()
+                    Imgproc.goodFeaturesToTrack(rotatedMat, newFeatures, 100, 0.3, 7.0)
+                    prevPoints = MatOfPoint2f(*newFeatures.toArray())
+                    newFeatures.release()
+
+                    currentGrayMat.release()
+                    // rotatedMat is now prevGrayMat, fgMask not used yet
+                    image.close()
+                    return
+                }
+            }
+            nextPoints.release()
+            status.release()
+            err.release()
+        }
+
+        // 更新 prevGrayMat 和 prevPoints (用於下一幀的光流計算)
+        rotatedMat.copyTo(prevGrayMat)
+        // 在當前幀 (rotatedMat) 上偵測好的特徵點，用於下一幀的光流計算
+        val features = MatOfPoint()
+        Imgproc.goodFeaturesToTrack(rotatedMat, features, 100, 0.3, 7.0) // maxCorners, qualityLevel, minDistance
+        prevPoints = MatOfPoint2f(*features.toArray())
+        features.release()
+        // --- 光流法結束 ---
+
+        // 確保背景扣除器已初始化 (MOG2)
+        initializeBgSubtractor()
+
+        // 如果晃動不大，則繼續 MOG2
+        // 應用背景扣除 (注意：MOG2 應該在 rotatedMat 上操作，因為它是當前處理的灰階圖)
         bgSubtractor?.apply(rotatedMat, fgMask, 0.01) // learningRate 設為較小值以穩定背景模型
 
         if (fgMask.empty()) {
@@ -288,9 +382,10 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         }
 
         // 釋放 Mat 資源
-        // grayMat.release() // grayMat 在下一幀會被重用或重新賦值，不需要在此釋放
-        // rotatedMat.release() // rotatedMat 在下一幀會被重用或重新賦值
-        // fgMask.release() // fgMask 在下一幀會被重用或重新賦值
+        currentGrayMat.release() // currentGrayMat 在此處釋放
+        // prevGrayMat 在下一幀會被重用
+        // rotatedMat 在此處相當於 prevGrayMat，不需要額外釋放
+        // fgMask 在下一幀會被重用或重新賦值
         for (contour in contours) {
             contour.release()
         }
