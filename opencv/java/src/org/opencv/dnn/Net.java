@@ -123,6 +123,36 @@ public class Net {
 
 
     //
+    // C++:  void cv::dnn::Net::dumpToPbtxt(String path)
+    //
+
+    /**
+     * Dump net structure, hyperparameters, backend, target and fusion to pbtxt file
+     * @param path   path to output file with .pbtxt extension
+     *
+     * Use Netron (https://netron.app) to open the target file to visualize the model.
+     * Call method after setInput(). To see correct backend, target and fusion run after forward().
+     */
+    public void dumpToPbtxt(String path) {
+        dumpToPbtxt_0(nativeObj, path);
+    }
+
+
+    //
+    // C++:  int cv::dnn::Net::addLayer(String name, String type, int dtype, LayerParams params)
+    //
+
+    // Unknown type 'LayerParams' (I), skipping the function
+
+
+    //
+    // C++:  int cv::dnn::Net::addLayerToPrev(String name, String type, int dtype, LayerParams params)
+    //
+
+    // Unknown type 'LayerParams' (I), skipping the function
+
+
+    //
     // C++:  int cv::dnn::Net::getLayerId(String layer)
     //
 
@@ -808,6 +838,9 @@ public class Net {
 
     // C++:  void cv::dnn::Net::dumpToFile(String path)
     private static native void dumpToFile_0(long nativeObj, String path);
+
+    // C++:  void cv::dnn::Net::dumpToPbtxt(String path)
+    private static native void dumpToPbtxt_0(long nativeObj, String path);
 
     // C++:  int cv::dnn::Net::getLayerId(String layer)
     private static native int getLayerId_0(long nativeObj, String layer);

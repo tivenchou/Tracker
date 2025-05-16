@@ -92,21 +92,19 @@ apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
 
 
-def openCVersionName = "4.9.0"
-def openCVersionCode = ((4 * 100 + 9) * 100 + 0) * 10 + 0
+def openCVersionName = "4.11.0"
+def openCVersionCode = ((4 * 100 + 11) * 100 + 0) * 10 + 0
 
 println "OpenCV: " +openCVersionName + " " + project.buildscript.sourceFile
 
 android {
     namespace 'org.opencv'
-    compileSdkVersion 31
+    compileSdkVersion 34
 
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 31
+        targetSdkVersion 34
 
-        versionCode openCVersionCode
-        versionName openCVersionName
 
         externalNativeBuild {
             cmake {
@@ -117,8 +115,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
 
@@ -180,7 +178,7 @@ publishing {
         release(MavenPublication) {
             groupId = 'org.opencv'
             artifactId = 'opencv'
-            version = '4.9.0'
+            version = '4.11.0'
 
             afterEvaluate {
                from components.release

@@ -27,11 +27,20 @@ import org.opencv.core.Mat
 import org.opencv.core.MatOfDouble // 新增導入
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
+import java.io.File
+import android.os.Environment
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import org.opencv.core.Scalar
 import org.opencv.imgproc.Moments // 修正導入
 import org.opencv.imgproc.Imgproc
 import org.opencv.video.BackgroundSubtractorMOG2
-import org.opencv.video.Video // 新增導入 for Video.createBackgroundSubtractorMOG2()
+import org.opencv.video.Video
+import org.opencv.videoio.VideoWriter // 新增導入VideoWriter類
 import org.opencv.core.MatOfPoint2f // 新增導入 for 光流法
 import org.opencv.core.MatOfByte    // 新增導入 for 光流法
 import org.opencv.core.TermCriteria // 新增導入 for 光流法
@@ -39,6 +48,7 @@ import org.opencv.core.TermCriteria // 新增導入 for 光流法
 // 移除重複導入
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import com.google.common.util.concurrent.ListenableFuture
 
 /**
  * 顯示相機預覽畫面的 Composable。
@@ -52,7 +62,7 @@ fun CameraPreview(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> = remember { ProcessCameraProvider.getInstance(context) as ListenableFuture<ProcessCameraProvider> }
     val cameraExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
     // OpenCV 初始化標誌
     var isOpencvInitialized by remember { mutableStateOf(false) }
@@ -101,14 +111,14 @@ fun CameraPreview(
                     }
 
                 Log.d("CameraPreview", "Attempting to bind camera use cases to lifecycle...")
-                cameraProvider.unbindAll()
+                cameraProvider.unbindAll() // 修正為正確的API調用
                 Log.d("CameraPreview", "Unbound all previous use cases.")
                 cameraProvider.bindToLifecycle(
                     lifecycleOwner,
                     cameraSelector,
                     preview,
                     imageAnalysis
-                )
+                ) // 確保使用正確的CameraX API
                 Log.d("CameraPreview", "Successfully bound camera use cases to lifecycle.")
             } catch (e: Exception) {
                 Log.e("CameraPreview", "Use case binding failed in LaunchedEffect", e)
@@ -166,6 +176,101 @@ fun CameraPreview(
  * @param onObjectTracked 回調函數，傳遞追蹤到的物體中心點座標 (相對於預覽畫面)，如果未偵測到則傳遞 null。
  */
 private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, Int) -> Unit) : ImageAnalysis.Analyzer {
+    // 錄影相關狀態
+    private var isRecording = false
+    private var recordingStartTime = 0L
+    private var recordingStopTime = 0L
+    private var lastDetectedTime = 0L
+    private var videoWriter: org.opencv.videoio.VideoWriter? = null
+    // 使用VideoWriter的create方法替代直接建構函式
+    private var outputFile: File? = null
+    
+    /**
+     * 使用VideoWriter.create方法初始化影片寫入器
+     * @param filename 輸出檔案路徑
+     * @param fourcc 影片編碼格式
+     * @param fps 影片幀率
+     * @param frameSize 影片幀尺寸
+     * @param isColor 是否為彩色影片
+     * @return 初始化成功的VideoWriter實例，失敗返回null
+     */
+    /**
+     * 使用VideoWriter.create方法初始化影片寫入器
+     * @param filename 輸出檔案路徑
+     * @param fourcc 影片編碼格式
+     * @param fps 影片幀率
+     * @param frameSize 影片幀尺寸
+     * @param isColor 是否為彩色影片
+     * @return 初始化成功的VideoWriter實例，失敗返回null
+     */
+    // 定義影片編碼格式 (MP4V)
+    private val videoWriterCodec = VideoWriter.fourcc('M', 'P', '4', 'V')
+    
+    private fun createVideoWriter(filename: String, fourcc: Int, fps: Double, frameSize: Size, isColor: Boolean): VideoWriter? {
+        return try {
+            VideoWriter(filename, fourcc, fps, org.opencv.core.Size(frameSize.width.toDouble(), frameSize.height.toDouble()), isColor)
+        } catch (e: Exception) {
+            Log.e("ObjectTrackerAnalyzer", "Failed to create VideoWriter: ${e.message}")
+            null
+        }
+    }
+    
+    // 錄影設定 (從設定頁面獲取)
+    private var enableRecording by mutableStateOf(false)
+    private var startDelay by mutableStateOf(5000) // 預設5秒
+    private var stopDelay by mutableStateOf(5000) // 預設5秒
+    private var savePath by mutableStateOf(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES).absolutePath
+    )
+    
+    // 從設定頁面接收參數
+    fun updateSettings(
+        enableRecording: Boolean,
+        startDelay: Int,
+        stopDelay: Int,
+        savePath: String
+    ) {
+        this.enableRecording = enableRecording
+        this.startDelay = startDelay * 1000 // 轉換為毫秒
+        this.stopDelay = stopDelay * 1000 // 轉換為毫秒
+        this.savePath = savePath
+    }
+    
+    // 錄影控制方法
+    private fun startRecording() {
+        if (!enableRecording || isRecording) return
+        
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "Tracker_${timestamp}.mp4"
+        outputFile = File(savePath, fileName)
+        
+        try {
+            videoWriter = org.opencv.videoio.VideoWriter(outputFile?.absolutePath, videoWriterCodec, 30.0, 
+                org.opencv.core.Size(rotatedMat.width().toDouble(), rotatedMat.height().toDouble()))
+            isRecording = true
+            recordingStartTime = System.currentTimeMillis()
+            Log.d("ObjectTrackerAnalyzer", "Recording started: ${outputFile?.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("ObjectTrackerAnalyzer", "Failed to start recording", e)
+            videoWriter?.release()
+            videoWriter = null
+        }
+    }
+    
+    private fun stopRecording() {
+        if (!isRecording) return
+        
+        try {
+            videoWriter?.release()
+            isRecording = false
+            recordingStopTime = System.currentTimeMillis()
+            Log.d("ObjectTrackerAnalyzer", "Recording stopped. Duration: ${(recordingStopTime - recordingStartTime)/1000} seconds")
+        } catch (e: Exception) {
+            Log.e("ObjectTrackerAnalyzer", "Failed to stop recording", e)
+        } finally {
+            videoWriter = null
+        }
+    }
     // 用於光流法
     private var prevGrayMat = Mat()
     private var prevPoints: MatOfPoint2f? = null
@@ -454,6 +559,35 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
                 Log.d("ObjectTrackerAnalyzer", "Adjusting minContourArea up to: $currentMinContourArea")
             }
             frameCountForMinContourAreaAdjust = 0 // 重置計數器
+        }
+
+        // 錄影控制邏輯
+        val currentTime = System.currentTimeMillis()
+        if (centerPoint != null) {
+            lastDetectedTime = currentTime
+            
+            // 如果偵測到物體且未開始錄影，檢查是否達到開始延遲
+            if (!isRecording && enableRecording && currentTime - lastDetectedTime >= startDelay) {
+                startRecording()
+            }
+        } else {
+            // 如果未偵測到物體且正在錄影，檢查是否達到停止延遲
+            if (isRecording && currentTime - lastDetectedTime >= stopDelay) {
+                stopRecording()
+            }
+        }
+        
+        // 如果有錄影且偵測到物體，寫入當前幀
+        if (isRecording && centerPoint != null && videoWriter != null) {
+            try {
+                // 將灰階圖轉換為BGR格式以便錄影
+                val bgrMat = Mat()
+                Imgproc.cvtColor(rotatedMat, bgrMat, Imgproc.COLOR_GRAY2BGR)
+                videoWriter?.write(bgrMat)
+                bgrMat.release()
+            } catch (e: Exception) {
+                Log.e("ObjectTrackerAnalyzer", "Failed to write video frame", e)
+            }
         }
 
         // 回調結果

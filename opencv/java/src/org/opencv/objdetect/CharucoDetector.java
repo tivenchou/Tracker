@@ -166,6 +166,9 @@ public class CharucoDetector extends Algorithm {
      * If camera parameters are provided, the process is based in an approximated pose estimation, else it is based on local homography.
      * Only visible corners are returned. For each corner, its corresponding identifier is also returned in charucoIds.
      * SEE: findChessboardCorners
+     * <b>Note:</b> After OpenCV 4.6.0, there was an incompatible change in the ChArUco pattern generation algorithm for even row counts.
+     * Use cv::aruco::CharucoBoard::setLegacyPattern() to ensure compatibility with patterns created using OpenCV versions prior to 4.6.0.
+     * For more information, see the issue: https://github.com/opencv/opencv/issues/23152
      */
     public void detectBoard(Mat image, Mat charucoCorners, Mat charucoIds, List<Mat> markerCorners, Mat markerIds) {
         Mat markerCorners_mat = Converters.vector_Mat_to_Mat(markerCorners);
@@ -194,6 +197,9 @@ public class CharucoDetector extends Algorithm {
      * If camera parameters are provided, the process is based in an approximated pose estimation, else it is based on local homography.
      * Only visible corners are returned. For each corner, its corresponding identifier is also returned in charucoIds.
      * SEE: findChessboardCorners
+     * <b>Note:</b> After OpenCV 4.6.0, there was an incompatible change in the ChArUco pattern generation algorithm for even row counts.
+     * Use cv::aruco::CharucoBoard::setLegacyPattern() to ensure compatibility with patterns created using OpenCV versions prior to 4.6.0.
+     * For more information, see the issue: https://github.com/opencv/opencv/issues/23152
      */
     public void detectBoard(Mat image, Mat charucoCorners, Mat charucoIds, List<Mat> markerCorners) {
         Mat markerCorners_mat = Converters.vector_Mat_to_Mat(markerCorners);
@@ -221,6 +227,9 @@ public class CharucoDetector extends Algorithm {
      * If camera parameters are provided, the process is based in an approximated pose estimation, else it is based on local homography.
      * Only visible corners are returned. For each corner, its corresponding identifier is also returned in charucoIds.
      * SEE: findChessboardCorners
+     * <b>Note:</b> After OpenCV 4.6.0, there was an incompatible change in the ChArUco pattern generation algorithm for even row counts.
+     * Use cv::aruco::CharucoBoard::setLegacyPattern() to ensure compatibility with patterns created using OpenCV versions prior to 4.6.0.
+     * For more information, see the issue: https://github.com/opencv/opencv/issues/23152
      */
     public void detectBoard(Mat image, Mat charucoCorners, Mat charucoIds) {
         detectBoard_2(nativeObj, image.nativeObj, charucoCorners.nativeObj, charucoIds.nativeObj);

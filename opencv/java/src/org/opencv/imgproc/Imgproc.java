@@ -74,6 +74,7 @@ public class Imgproc {
             CV_mRGBA2RGBA = 126,
             CV_WARP_FILL_OUTLIERS = 8,
             CV_WARP_INVERSE_MAP = 16,
+            CV_WARP_RELATIVE_MAP = 32,
             CV_CHAIN_CODE = 0,
             CV_LINK_RUNS = 5,
             CV_POLY_APPROX_DP = 0,
@@ -552,7 +553,8 @@ public class Imgproc {
             INTER_NEAREST_EXACT = 6,
             INTER_MAX = 7,
             WARP_FILL_OUTLIERS = 8,
-            WARP_INVERSE_MAP = 16;
+            WARP_INVERSE_MAP = 16,
+            WARP_RELATIVE_MAP = 32;
 
 
     // C++: enum InterpolationMasks (cv.InterpolationMasks)
@@ -1062,8 +1064,34 @@ public class Imgproc {
 
 
     //
-    // C++:  void cv::GaussianBlur(Mat src, Mat& dst, Size ksize, double sigmaX, double sigmaY = 0, int borderType = BORDER_DEFAULT)
+    // C++:  void cv::GaussianBlur(Mat src, Mat& dst, Size ksize, double sigmaX, double sigmaY = 0, int borderType = BORDER_DEFAULT, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
     //
+
+    /**
+     * Blurs an image using a Gaussian filter.
+     *
+     * The function convolves the source image with the specified Gaussian kernel. In-place filtering is
+     * supported.
+     *
+     * @param src input image; the image can have any number of channels, which are processed
+     * independently, but the depth should be CV_8U, CV_16U, CV_16S, CV_32F or CV_64F.
+     * @param dst output image of the same size and type as src.
+     * @param ksize Gaussian kernel size. ksize.width and ksize.height can differ but they both must be
+     * positive and odd. Or, they can be zero's and then they are computed from sigma.
+     * @param sigmaX Gaussian kernel standard deviation in X direction.
+     * @param sigmaY Gaussian kernel standard deviation in Y direction; if sigmaY is zero, it is set to be
+     * equal to sigmaX, if both sigmas are zeros, they are computed from ksize.width and ksize.height,
+     * respectively (see #getGaussianKernel for details); to fully control the result regardless of
+     * possible future modifications of all this semantics, it is recommended to specify all of ksize,
+     * sigmaX, and sigmaY.
+     * @param borderType pixel extrapolation method, see #BorderTypes. #BORDER_WRAP is not supported.
+     * @param hint Implementation modfication flags. See #AlgorithmHint
+     *
+     * SEE:  sepFilter2D, filter2D, blur, boxFilter, bilateralFilter, medianBlur
+     */
+    public static void GaussianBlur(Mat src, Mat dst, Size ksize, double sigmaX, double sigmaY, int borderType, int hint) {
+        GaussianBlur_0(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX, sigmaY, borderType, hint);
+    }
 
     /**
      * Blurs an image using a Gaussian filter.
@@ -1087,7 +1115,7 @@ public class Imgproc {
      * SEE:  sepFilter2D, filter2D, blur, boxFilter, bilateralFilter, medianBlur
      */
     public static void GaussianBlur(Mat src, Mat dst, Size ksize, double sigmaX, double sigmaY, int borderType) {
-        GaussianBlur_0(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX, sigmaY, borderType);
+        GaussianBlur_1(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX, sigmaY, borderType);
     }
 
     /**
@@ -1111,7 +1139,7 @@ public class Imgproc {
      * SEE:  sepFilter2D, filter2D, blur, boxFilter, bilateralFilter, medianBlur
      */
     public static void GaussianBlur(Mat src, Mat dst, Size ksize, double sigmaX, double sigmaY) {
-        GaussianBlur_1(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX, sigmaY);
+        GaussianBlur_2(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX, sigmaY);
     }
 
     /**
@@ -1134,7 +1162,7 @@ public class Imgproc {
      * SEE:  sepFilter2D, filter2D, blur, boxFilter, bilateralFilter, medianBlur
      */
     public static void GaussianBlur(Mat src, Mat dst, Size ksize, double sigmaX) {
-        GaussianBlur_2(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX);
+        GaussianBlur_3(src.nativeObj, dst.nativeObj, ksize.width, ksize.height, sigmaX);
     }
 
 
@@ -3155,8 +3183,41 @@ public class Imgproc {
 
 
     //
-    // C++:  void cv::HoughLines(Mat image, Mat& lines, double rho, double theta, int threshold, double srn = 0, double stn = 0, double min_theta = 0, double max_theta = CV_PI)
+    // C++:  void cv::HoughLines(Mat image, Mat& lines, double rho, double theta, int threshold, double srn = 0, double stn = 0, double min_theta = 0, double max_theta = CV_PI, bool use_edgeval = false)
     //
+
+    /**
+     * Finds lines in a binary image using the standard Hough transform.
+     *
+     * The function implements the standard or standard multi-scale Hough transform algorithm for line
+     * detection. See &lt;http://homepages.inf.ed.ac.uk/rbf/HIPR2/hough.htm&gt; for a good explanation of Hough
+     * transform.
+     *
+     * @param image 8-bit, single-channel binary source image. The image may be modified by the function.
+     * @param lines Output vector of lines. Each line is represented by a 2 or 3 element vector
+     * \((\rho, \theta)\) or \((\rho, \theta, \textrm{votes})\), where \(\rho\) is the distance from
+     * the coordinate origin \((0,0)\) (top-left corner of the image), \(\theta\) is the line rotation
+     * angle in radians ( \(0 \sim \textrm{vertical line}, \pi/2 \sim \textrm{horizontal line}\) ), and
+     * \(\textrm{votes}\) is the value of accumulator.
+     * @param rho Distance resolution of the accumulator in pixels.
+     * @param theta Angle resolution of the accumulator in radians.
+     * @param threshold %Accumulator threshold parameter. Only those lines are returned that get enough
+     * votes ( \(&gt;\texttt{threshold}\) ).
+     * @param srn For the multi-scale Hough transform, it is a divisor for the distance resolution rho.
+     * The coarse accumulator distance resolution is rho and the accurate accumulator resolution is
+     * rho/srn. If both srn=0 and stn=0, the classical Hough transform is used. Otherwise, both these
+     * parameters should be positive.
+     * @param stn For the multi-scale Hough transform, it is a divisor for the distance resolution theta.
+     * @param min_theta For standard and multi-scale Hough transform, minimum angle to check for lines.
+     * Must fall between 0 and max_theta.
+     * @param max_theta For standard and multi-scale Hough transform, an upper bound for the angle.
+     * Must fall between min_theta and CV_PI. The actual maximum angle in the accumulator may be slightly
+     * less than max_theta, depending on the parameters min_theta and theta.
+     * @param use_edgeval True if you want to use weighted Hough transform.
+     */
+    public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold, double srn, double stn, double min_theta, double max_theta, boolean use_edgeval) {
+        HoughLines_0(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn, min_theta, max_theta, use_edgeval);
+    }
 
     /**
      * Finds lines in a binary image using the standard Hough transform.
@@ -3187,7 +3248,7 @@ public class Imgproc {
      * less than max_theta, depending on the parameters min_theta and theta.
      */
     public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold, double srn, double stn, double min_theta, double max_theta) {
-        HoughLines_0(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn, min_theta, max_theta);
+        HoughLines_1(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn, min_theta, max_theta);
     }
 
     /**
@@ -3218,7 +3279,7 @@ public class Imgproc {
      * less than max_theta, depending on the parameters min_theta and theta.
      */
     public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold, double srn, double stn, double min_theta) {
-        HoughLines_1(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn, min_theta);
+        HoughLines_2(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn, min_theta);
     }
 
     /**
@@ -3248,7 +3309,7 @@ public class Imgproc {
      * less than max_theta, depending on the parameters min_theta and theta.
      */
     public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold, double srn, double stn) {
-        HoughLines_2(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn);
+        HoughLines_3(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn, stn);
     }
 
     /**
@@ -3277,7 +3338,7 @@ public class Imgproc {
      * less than max_theta, depending on the parameters min_theta and theta.
      */
     public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold, double srn) {
-        HoughLines_3(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn);
+        HoughLines_4(image.nativeObj, lines.nativeObj, rho, theta, threshold, srn);
     }
 
     /**
@@ -3305,7 +3366,7 @@ public class Imgproc {
      * less than max_theta, depending on the parameters min_theta and theta.
      */
     public static void HoughLines(Mat image, Mat lines, double rho, double theta, int threshold) {
-        HoughLines_4(image.nativeObj, lines.nativeObj, rho, theta, threshold);
+        HoughLines_5(image.nativeObj, lines.nativeObj, rho, theta, threshold);
     }
 
 
@@ -4456,6 +4517,10 @@ public class Imgproc {
      *
      * \(\texttt{dst} (x,y) =  \texttt{src} (map_x(x,y),map_y(x,y))\)
      *
+     * with the WARP_RELATIVE_MAP flag :
+     *
+     * \(\texttt{dst} (x,y) =  \texttt{src} (x+map_x(x,y),y+map_y(x,y))\)
+     *
      * where values of pixels with non-integer coordinates are computed using one of available
      * interpolation methods. \(map_x\) and \(map_y\) can be encoded as separate floating-point maps
      * in \(map_1\) and \(map_2\) respectively, or interleaved floating-point maps of \((x,y)\) in
@@ -4474,7 +4539,9 @@ public class Imgproc {
      * @param map2 The second map of y values having the type CV_16UC1, CV_32FC1, or none (empty map
      * if map1 is (x,y) points), respectively.
      * @param interpolation Interpolation method (see #InterpolationFlags). The methods #INTER_AREA
-     * and #INTER_LINEAR_EXACT are not supported by this function.
+     * #INTER_LINEAR_EXACT and #INTER_NEAREST_EXACT are not supported by this function.
+     * The extra flag WARP_RELATIVE_MAP can be ORed to the interpolation method
+     * (e.g. INTER_LINEAR | WARP_RELATIVE_MAP)
      * @param borderMode Pixel extrapolation method (see #BorderTypes). When
      * borderMode=#BORDER_TRANSPARENT, it means that the pixels in the destination image that
      * corresponds to the "outliers" in the source image are not modified by the function.
@@ -4493,6 +4560,10 @@ public class Imgproc {
      *
      * \(\texttt{dst} (x,y) =  \texttt{src} (map_x(x,y),map_y(x,y))\)
      *
+     * with the WARP_RELATIVE_MAP flag :
+     *
+     * \(\texttt{dst} (x,y) =  \texttt{src} (x+map_x(x,y),y+map_y(x,y))\)
+     *
      * where values of pixels with non-integer coordinates are computed using one of available
      * interpolation methods. \(map_x\) and \(map_y\) can be encoded as separate floating-point maps
      * in \(map_1\) and \(map_2\) respectively, or interleaved floating-point maps of \((x,y)\) in
@@ -4511,7 +4582,9 @@ public class Imgproc {
      * @param map2 The second map of y values having the type CV_16UC1, CV_32FC1, or none (empty map
      * if map1 is (x,y) points), respectively.
      * @param interpolation Interpolation method (see #InterpolationFlags). The methods #INTER_AREA
-     * and #INTER_LINEAR_EXACT are not supported by this function.
+     * #INTER_LINEAR_EXACT and #INTER_NEAREST_EXACT are not supported by this function.
+     * The extra flag WARP_RELATIVE_MAP can be ORed to the interpolation method
+     * (e.g. INTER_LINEAR | WARP_RELATIVE_MAP)
      * @param borderMode Pixel extrapolation method (see #BorderTypes). When
      * borderMode=#BORDER_TRANSPARENT, it means that the pixels in the destination image that
      * corresponds to the "outliers" in the source image are not modified by the function.
@@ -4529,6 +4602,10 @@ public class Imgproc {
      *
      * \(\texttt{dst} (x,y) =  \texttt{src} (map_x(x,y),map_y(x,y))\)
      *
+     * with the WARP_RELATIVE_MAP flag :
+     *
+     * \(\texttt{dst} (x,y) =  \texttt{src} (x+map_x(x,y),y+map_y(x,y))\)
+     *
      * where values of pixels with non-integer coordinates are computed using one of available
      * interpolation methods. \(map_x\) and \(map_y\) can be encoded as separate floating-point maps
      * in \(map_1\) and \(map_2\) respectively, or interleaved floating-point maps of \((x,y)\) in
@@ -4547,7 +4624,9 @@ public class Imgproc {
      * @param map2 The second map of y values having the type CV_16UC1, CV_32FC1, or none (empty map
      * if map1 is (x,y) points), respectively.
      * @param interpolation Interpolation method (see #InterpolationFlags). The methods #INTER_AREA
-     * and #INTER_LINEAR_EXACT are not supported by this function.
+     * #INTER_LINEAR_EXACT and #INTER_NEAREST_EXACT are not supported by this function.
+     * The extra flag WARP_RELATIVE_MAP can be ORed to the interpolation method
+     * (e.g. INTER_LINEAR | WARP_RELATIVE_MAP)
      * borderMode=#BORDER_TRANSPARENT, it means that the pixels in the destination image that
      * corresponds to the "outliers" in the source image are not modified by the function.
      * <b>Note:</b>
@@ -7042,8 +7121,63 @@ public class Imgproc {
 
 
     //
-    // C++:  void cv::cvtColor(Mat src, Mat& dst, int code, int dstCn = 0)
+    // C++:  void cv::cvtColor(Mat src, Mat& dst, int code, int dstCn = 0, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
     //
+
+    /**
+     * Converts an image from one color space to another.
+     *
+     * The function converts an input image from one color space to another. In case of a transformation
+     * to-from RGB color space, the order of the channels should be specified explicitly (RGB or BGR). Note
+     * that the default color format in OpenCV is often referred to as RGB but it is actually BGR (the
+     * bytes are reversed). So the first byte in a standard (24-bit) color image will be an 8-bit Blue
+     * component, the second byte will be Green, and the third byte will be Red. The fourth, fifth, and
+     * sixth bytes would then be the second pixel (Blue, then Green, then Red), and so on.
+     *
+     * The conventional ranges for R, G, and B channel values are:
+     * <ul>
+     *   <li>
+     *    0 to 255 for CV_8U images
+     *   </li>
+     *   <li>
+     *    0 to 65535 for CV_16U images
+     *   </li>
+     *   <li>
+     *    0 to 1 for CV_32F images
+     *   </li>
+     * </ul>
+     *
+     * In case of linear transformations, the range does not matter. But in case of a non-linear
+     * transformation, an input RGB image should be normalized to the proper value range to get the correct
+     * results, for example, for RGB \(\rightarrow\) L\*u\*v\* transformation. For example, if you have a
+     * 32-bit floating-point image directly converted from an 8-bit image without any scaling, then it will
+     * have the 0..255 value range instead of 0..1 assumed by the function. So, before calling #cvtColor ,
+     * you need first to scale the image down:
+     * <code>
+     *     img *= 1./255;
+     *     cvtColor(img, img, COLOR_BGR2Luv);
+     * </code>
+     * If you use #cvtColor with 8-bit images, the conversion will have some information lost. For many
+     * applications, this will not be noticeable but it is recommended to use 32-bit images in applications
+     * that need the full range of colors or that convert an image before an operation and then convert
+     * back.
+     *
+     * If conversion adds the alpha channel, its value will set to the maximum of corresponding channel
+     * range: 255 for CV_8U, 65535 for CV_16U, 1 for CV_32F.
+     *
+     * @param src input image: 8-bit unsigned, 16-bit unsigned ( CV_16UC... ), or single-precision
+     * floating-point.
+     * @param dst output image of the same size and depth as src.
+     * @param code color space conversion code (see #ColorConversionCodes).
+     * @param dstCn number of channels in the destination image; if the parameter is 0, the number of the
+     * channels is derived automatically from src and code.
+     * @param hint Implementation modfication flags. See #AlgorithmHint
+     *
+     * SEE: REF: imgproc_color_conversions
+     */
+    public static void cvtColor(Mat src, Mat dst, int code, int dstCn, int hint) {
+        cvtColor_0(src.nativeObj, dst.nativeObj, code, dstCn, hint);
+    }
 
     /**
      * Converts an image from one color space to another.
@@ -7096,7 +7230,7 @@ public class Imgproc {
      * SEE: REF: imgproc_color_conversions
      */
     public static void cvtColor(Mat src, Mat dst, int code, int dstCn) {
-        cvtColor_0(src.nativeObj, dst.nativeObj, code, dstCn);
+        cvtColor_1(src.nativeObj, dst.nativeObj, code, dstCn);
     }
 
     /**
@@ -7149,13 +7283,55 @@ public class Imgproc {
      * SEE: REF: imgproc_color_conversions
      */
     public static void cvtColor(Mat src, Mat dst, int code) {
-        cvtColor_1(src.nativeObj, dst.nativeObj, code);
+        cvtColor_2(src.nativeObj, dst.nativeObj, code);
     }
 
 
     //
-    // C++:  void cv::cvtColorTwoPlane(Mat src1, Mat src2, Mat& dst, int code)
+    // C++:  void cv::cvtColorTwoPlane(Mat src1, Mat src2, Mat& dst, int code, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
     //
+
+    /**
+     * Converts an image from one color space to another where the source image is
+     * stored in two planes.
+     *
+     * This function only supports YUV420 to RGB conversion as of now.
+     *
+     * @param src1 8-bit image (#CV_8U) of the Y plane.
+     * @param src2 image containing interleaved U/V plane.
+     * @param dst output image.
+     * @param code Specifies the type of conversion. It can take any of the following values:
+     * <ul>
+     *   <li>
+     *  #COLOR_YUV2BGR_NV12
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2RGB_NV12
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2BGRA_NV12
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2RGBA_NV12
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2BGR_NV21
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2RGB_NV21
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2BGRA_NV21
+     *   </li>
+     *   <li>
+     *  #COLOR_YUV2RGBA_NV21
+     *   </li>
+     * </ul>
+     * @param hint Implementation modfication flags. See #AlgorithmHint
+     */
+    public static void cvtColorTwoPlane(Mat src1, Mat src2, Mat dst, int code, int hint) {
+        cvtColorTwoPlane_0(src1.nativeObj, src2.nativeObj, dst.nativeObj, code, hint);
+    }
 
     /**
      * Converts an image from one color space to another where the source image is
@@ -7195,7 +7371,7 @@ public class Imgproc {
      * </ul>
      */
     public static void cvtColorTwoPlane(Mat src1, Mat src2, Mat dst, int code) {
-        cvtColorTwoPlane_0(src1.nativeObj, src2.nativeObj, dst.nativeObj, code);
+        cvtColorTwoPlane_1(src1.nativeObj, src2.nativeObj, dst.nativeObj, code);
     }
 
 
@@ -7315,8 +7491,8 @@ public class Imgproc {
      * The function computes moments, up to the 3rd order, of a vector shape or a rasterized shape. The
      * results are returned in the structure cv::Moments.
      *
-     * @param array Raster image (single-channel, 8-bit or floating-point 2D array) or an array (
-     * \(1 \times N\) or \(N \times 1\) ) of 2D points (Point or Point2f ).
+     * @param array Single chanel raster image (CV_8U, CV_16U, CV_16S, CV_32F, CV_64F) or an array (
+     * \(1 \times N\) or \(N \times 1\) ) of 2D points (Point or Point2f).
      * @param binaryImage If it is true, all non-zero image pixels are treated as 1's. The parameter is
      * used for images only.
      * @return moments.
@@ -7336,8 +7512,8 @@ public class Imgproc {
      * The function computes moments, up to the 3rd order, of a vector shape or a rasterized shape. The
      * results are returned in the structure cv::Moments.
      *
-     * @param array Raster image (single-channel, 8-bit or floating-point 2D array) or an array (
-     * \(1 \times N\) or \(N \times 1\) ) of 2D points (Point or Point2f ).
+     * @param array Single chanel raster image (CV_8U, CV_16U, CV_16S, CV_32F, CV_64F) or an array (
+     * \(1 \times N\) or \(N \times 1\) ) of 2D points (Point or Point2f).
      * used for images only.
      * @return moments.
      *
@@ -7660,6 +7836,30 @@ public class Imgproc {
 
 
     //
+    // C++:  void cv::findContoursLinkRuns(Mat image, vector_Mat& contours, Mat& hierarchy)
+    //
+
+    public static void findContoursLinkRuns(Mat image, List<Mat> contours, Mat hierarchy) {
+        Mat contours_mat = new Mat();
+        findContoursLinkRuns_0(image.nativeObj, contours_mat.nativeObj, hierarchy.nativeObj);
+        Converters.Mat_to_vector_Mat(contours_mat, contours);
+        contours_mat.release();
+    }
+
+
+    //
+    // C++:  void cv::findContoursLinkRuns(Mat image, vector_Mat& contours)
+    //
+
+    public static void findContoursLinkRuns(Mat image, List<Mat> contours) {
+        Mat contours_mat = new Mat();
+        findContoursLinkRuns_1(image.nativeObj, contours_mat.nativeObj);
+        Converters.Mat_to_vector_Mat(contours_mat, contours);
+        contours_mat.release();
+    }
+
+
+    //
     // C++:  void cv::approxPolyDP(vector_Point2f curve, vector_Point2f& approxCurve, double epsilon, bool closed)
     //
 
@@ -7681,6 +7881,77 @@ public class Imgproc {
         Mat curve_mat = curve;
         Mat approxCurve_mat = approxCurve;
         approxPolyDP_0(curve_mat.nativeObj, approxCurve_mat.nativeObj, epsilon, closed);
+    }
+
+
+    //
+    // C++:  void cv::approxPolyN(Mat curve, Mat& approxCurve, int nsides, float epsilon_percentage = -1.0, bool ensure_convex = true)
+    //
+
+    /**
+     * Approximates a polygon with a convex hull with a specified accuracy and number of sides.
+     *
+     * The cv::approxPolyN function approximates a polygon with a convex hull
+     * so that the difference between the contour area of the original contour and the new polygon is minimal.
+     * It uses a greedy algorithm for contracting two vertices into one in such a way that the additional area is minimal.
+     * Straight lines formed by each edge of the convex contour are drawn and the areas of the resulting triangles are considered.
+     * Each vertex will lie either on the original contour or outside it.
+     *
+     * The algorithm based on the paper CITE: LowIlie2003 .
+     *
+     * @param curve Input vector of a 2D points stored in std::vector or Mat, points must be float or integer.
+     * @param approxCurve Result of the approximation. The type is vector of a 2D point (Point2f or Point) in std::vector or Mat.
+     * @param nsides The parameter defines the number of sides of the result polygon.
+     * @param epsilon_percentage defines the percentage of the maximum of additional area.
+     * If it equals -1, it is not used. Otherwise algorighm stops if additional area is greater than contourArea(_curve) * percentage.
+     * If additional area exceeds the limit, algorithm returns as many vertices as there were at the moment the limit was exceeded.
+     * @param ensure_convex If it is true, algorithm creates a convex hull of input contour. Otherwise input vector should be convex.
+     */
+    public static void approxPolyN(Mat curve, Mat approxCurve, int nsides, float epsilon_percentage, boolean ensure_convex) {
+        approxPolyN_0(curve.nativeObj, approxCurve.nativeObj, nsides, epsilon_percentage, ensure_convex);
+    }
+
+    /**
+     * Approximates a polygon with a convex hull with a specified accuracy and number of sides.
+     *
+     * The cv::approxPolyN function approximates a polygon with a convex hull
+     * so that the difference between the contour area of the original contour and the new polygon is minimal.
+     * It uses a greedy algorithm for contracting two vertices into one in such a way that the additional area is minimal.
+     * Straight lines formed by each edge of the convex contour are drawn and the areas of the resulting triangles are considered.
+     * Each vertex will lie either on the original contour or outside it.
+     *
+     * The algorithm based on the paper CITE: LowIlie2003 .
+     *
+     * @param curve Input vector of a 2D points stored in std::vector or Mat, points must be float or integer.
+     * @param approxCurve Result of the approximation. The type is vector of a 2D point (Point2f or Point) in std::vector or Mat.
+     * @param nsides The parameter defines the number of sides of the result polygon.
+     * @param epsilon_percentage defines the percentage of the maximum of additional area.
+     * If it equals -1, it is not used. Otherwise algorighm stops if additional area is greater than contourArea(_curve) * percentage.
+     * If additional area exceeds the limit, algorithm returns as many vertices as there were at the moment the limit was exceeded.
+     */
+    public static void approxPolyN(Mat curve, Mat approxCurve, int nsides, float epsilon_percentage) {
+        approxPolyN_1(curve.nativeObj, approxCurve.nativeObj, nsides, epsilon_percentage);
+    }
+
+    /**
+     * Approximates a polygon with a convex hull with a specified accuracy and number of sides.
+     *
+     * The cv::approxPolyN function approximates a polygon with a convex hull
+     * so that the difference between the contour area of the original contour and the new polygon is minimal.
+     * It uses a greedy algorithm for contracting two vertices into one in such a way that the additional area is minimal.
+     * Straight lines formed by each edge of the convex contour are drawn and the areas of the resulting triangles are considered.
+     * Each vertex will lie either on the original contour or outside it.
+     *
+     * The algorithm based on the paper CITE: LowIlie2003 .
+     *
+     * @param curve Input vector of a 2D points stored in std::vector or Mat, points must be float or integer.
+     * @param approxCurve Result of the approximation. The type is vector of a 2D point (Point2f or Point) in std::vector or Mat.
+     * @param nsides The parameter defines the number of sides of the result polygon.
+     * If it equals -1, it is not used. Otherwise algorighm stops if additional area is greater than contourArea(_curve) * percentage.
+     * If additional area exceeds the limit, algorithm returns as many vertices as there were at the moment the limit was exceeded.
+     */
+    public static void approxPolyN(Mat curve, Mat approxCurve, int nsides) {
+        approxPolyN_2(curve.nativeObj, approxCurve.nativeObj, nsides);
     }
 
 
@@ -8042,7 +8313,7 @@ public class Imgproc {
      * When false, no intersection is found. If the polygons share a side or the vertex of one polygon lies on an edge
      * of the other, they are not considered nested and an intersection will be found regardless of the value of handleNested.
      *
-     * @return Absolute value of area of intersecting polygon
+     * @return Area of intersecting polygon. May be negative, if algorithm has not converged, e.g. non-convex input.
      *
      * <b>Note:</b> intersectConvexConvex doesn't confirm that both polygons are convex and will return invalid results if they aren't.
      */
@@ -8059,7 +8330,7 @@ public class Imgproc {
      * When false, no intersection is found. If the polygons share a side or the vertex of one polygon lies on an edge
      * of the other, they are not considered nested and an intersection will be found regardless of the value of handleNested.
      *
-     * @return Absolute value of area of intersecting polygon
+     * @return Area of intersecting polygon. May be negative, if algorithm has not converged, e.g. non-convex input.
      *
      * <b>Note:</b> intersectConvexConvex doesn't confirm that both polygons are convex and will return invalid results if they aren't.
      */
@@ -8145,7 +8416,7 @@ public class Imgproc {
      *
      *  The function calculates the ellipse that fits a set of 2D points.
      *  It returns the rotated rectangle in which the ellipse is inscribed.
-     *  The Direct least square (Direct) method by CITE: Fitzgibbon1999 is used.
+     *  The Direct least square (Direct) method by CITE: oy1998NumericallySD is used.
      *
      *  For an ellipse, this basis set is \( \chi= \left(x^2, x y, y^2, x, y, 1\right) \),
      *  which is a set of six free coefficients \( A^T=\left\{A_{\text{xx}},A_{\text{xy}},A_{\text{yy}},A_x,A_y,A_0\right\} \).
@@ -8333,7 +8604,7 @@ public class Imgproc {
     /**
      * Applies a GNU Octave/MATLAB equivalent colormap on a given image.
      *
-     * @param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3.
+     * @param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3. If CV_8UC3, then the CV_8UC1 image is generated internally using cv::COLOR_BGR2GRAY.
      * @param dst The result is the colormapped source image. Note: Mat::create is called on dst.
      * @param colormap The colormap to apply, see #ColormapTypes
      */
@@ -8349,8 +8620,8 @@ public class Imgproc {
     /**
      * Applies a user colormap on a given image.
      *
-     * @param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3.
-     * @param dst The result is the colormapped source image. Note: Mat::create is called on dst.
+     * @param src The source image, grayscale or colored of type CV_8UC1 or CV_8UC3. If CV_8UC3, then the CV_8UC1 image is generated internally using cv::COLOR_BGR2GRAY.
+     * @param dst The result is the colormapped source image of the same number of channels as userColor. Note: Mat::create is called on dst.
      * @param userColor The colormap to apply of type CV_8UC1 or CV_8UC3 and size 256
      */
     public static void applyColorMap(Mat src, Mat dst, Mat userColor) {
@@ -9697,10 +9968,11 @@ public static Size getTextSize(String text, int fontFace, double fontScale, int 
     // C++:  void cv::medianBlur(Mat src, Mat& dst, int ksize)
     private static native void medianBlur_0(long src_nativeObj, long dst_nativeObj, int ksize);
 
-    // C++:  void cv::GaussianBlur(Mat src, Mat& dst, Size ksize, double sigmaX, double sigmaY = 0, int borderType = BORDER_DEFAULT)
-    private static native void GaussianBlur_0(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX, double sigmaY, int borderType);
-    private static native void GaussianBlur_1(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX, double sigmaY);
-    private static native void GaussianBlur_2(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX);
+    // C++:  void cv::GaussianBlur(Mat src, Mat& dst, Size ksize, double sigmaX, double sigmaY = 0, int borderType = BORDER_DEFAULT, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
+    private static native void GaussianBlur_0(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX, double sigmaY, int borderType, int hint);
+    private static native void GaussianBlur_1(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX, double sigmaY, int borderType);
+    private static native void GaussianBlur_2(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX, double sigmaY);
+    private static native void GaussianBlur_3(long src_nativeObj, long dst_nativeObj, double ksize_width, double ksize_height, double sigmaX);
 
     // C++:  void cv::bilateralFilter(Mat src, Mat& dst, int d, double sigmaColor, double sigmaSpace, int borderType = BORDER_DEFAULT)
     private static native void bilateralFilter_0(long src_nativeObj, long dst_nativeObj, int d, double sigmaColor, double sigmaSpace, int borderType);
@@ -9811,12 +10083,13 @@ public static Size getTextSize(String text, int fontFace, double fontScale, int 
     private static native void goodFeaturesToTrackWithQuality_3(long image_nativeObj, long corners_nativeObj, int maxCorners, double qualityLevel, double minDistance, long mask_nativeObj, long cornersQuality_nativeObj, int blockSize);
     private static native void goodFeaturesToTrackWithQuality_4(long image_nativeObj, long corners_nativeObj, int maxCorners, double qualityLevel, double minDistance, long mask_nativeObj, long cornersQuality_nativeObj);
 
-    // C++:  void cv::HoughLines(Mat image, Mat& lines, double rho, double theta, int threshold, double srn = 0, double stn = 0, double min_theta = 0, double max_theta = CV_PI)
-    private static native void HoughLines_0(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn, double min_theta, double max_theta);
-    private static native void HoughLines_1(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn, double min_theta);
-    private static native void HoughLines_2(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn);
-    private static native void HoughLines_3(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn);
-    private static native void HoughLines_4(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold);
+    // C++:  void cv::HoughLines(Mat image, Mat& lines, double rho, double theta, int threshold, double srn = 0, double stn = 0, double min_theta = 0, double max_theta = CV_PI, bool use_edgeval = false)
+    private static native void HoughLines_0(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn, double min_theta, double max_theta, boolean use_edgeval);
+    private static native void HoughLines_1(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn, double min_theta, double max_theta);
+    private static native void HoughLines_2(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn, double min_theta);
+    private static native void HoughLines_3(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn, double stn);
+    private static native void HoughLines_4(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double srn);
+    private static native void HoughLines_5(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold);
 
     // C++:  void cv::HoughLinesP(Mat image, Mat& lines, double rho, double theta, int threshold, double minLineLength = 0, double maxLineGap = 0)
     private static native void HoughLinesP_0(long image_nativeObj, long lines_nativeObj, double rho, double theta, int threshold, double minLineLength, double maxLineGap);
@@ -10018,12 +10291,14 @@ public static Size getTextSize(String text, int fontFace, double fontScale, int 
     // C++:  void cv::blendLinear(Mat src1, Mat src2, Mat weights1, Mat weights2, Mat& dst)
     private static native void blendLinear_0(long src1_nativeObj, long src2_nativeObj, long weights1_nativeObj, long weights2_nativeObj, long dst_nativeObj);
 
-    // C++:  void cv::cvtColor(Mat src, Mat& dst, int code, int dstCn = 0)
-    private static native void cvtColor_0(long src_nativeObj, long dst_nativeObj, int code, int dstCn);
-    private static native void cvtColor_1(long src_nativeObj, long dst_nativeObj, int code);
+    // C++:  void cv::cvtColor(Mat src, Mat& dst, int code, int dstCn = 0, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
+    private static native void cvtColor_0(long src_nativeObj, long dst_nativeObj, int code, int dstCn, int hint);
+    private static native void cvtColor_1(long src_nativeObj, long dst_nativeObj, int code, int dstCn);
+    private static native void cvtColor_2(long src_nativeObj, long dst_nativeObj, int code);
 
-    // C++:  void cv::cvtColorTwoPlane(Mat src1, Mat src2, Mat& dst, int code)
-    private static native void cvtColorTwoPlane_0(long src1_nativeObj, long src2_nativeObj, long dst_nativeObj, int code);
+    // C++:  void cv::cvtColorTwoPlane(Mat src1, Mat src2, Mat& dst, int code, AlgorithmHint hint = cv::ALGO_HINT_DEFAULT)
+    private static native void cvtColorTwoPlane_0(long src1_nativeObj, long src2_nativeObj, long dst_nativeObj, int code, int hint);
+    private static native void cvtColorTwoPlane_1(long src1_nativeObj, long src2_nativeObj, long dst_nativeObj, int code);
 
     // C++:  void cv::demosaicing(Mat src, Mat& dst, int code, int dstCn = 0)
     private static native void demosaicing_0(long src_nativeObj, long dst_nativeObj, int code, int dstCn);
@@ -10060,8 +10335,19 @@ public static Size getTextSize(String text, int fontFace, double fontScale, int 
     private static native void findContours_0(long image_nativeObj, long contours_mat_nativeObj, long hierarchy_nativeObj, int mode, int method, double offset_x, double offset_y);
     private static native void findContours_1(long image_nativeObj, long contours_mat_nativeObj, long hierarchy_nativeObj, int mode, int method);
 
+    // C++:  void cv::findContoursLinkRuns(Mat image, vector_Mat& contours, Mat& hierarchy)
+    private static native void findContoursLinkRuns_0(long image_nativeObj, long contours_mat_nativeObj, long hierarchy_nativeObj);
+
+    // C++:  void cv::findContoursLinkRuns(Mat image, vector_Mat& contours)
+    private static native void findContoursLinkRuns_1(long image_nativeObj, long contours_mat_nativeObj);
+
     // C++:  void cv::approxPolyDP(vector_Point2f curve, vector_Point2f& approxCurve, double epsilon, bool closed)
     private static native void approxPolyDP_0(long curve_mat_nativeObj, long approxCurve_mat_nativeObj, double epsilon, boolean closed);
+
+    // C++:  void cv::approxPolyN(Mat curve, Mat& approxCurve, int nsides, float epsilon_percentage = -1.0, bool ensure_convex = true)
+    private static native void approxPolyN_0(long curve_nativeObj, long approxCurve_nativeObj, int nsides, float epsilon_percentage, boolean ensure_convex);
+    private static native void approxPolyN_1(long curve_nativeObj, long approxCurve_nativeObj, int nsides, float epsilon_percentage);
+    private static native void approxPolyN_2(long curve_nativeObj, long approxCurve_nativeObj, int nsides);
 
     // C++:  double cv::arcLength(vector_Point2f curve, bool closed)
     private static native double arcLength_0(long curve_mat_nativeObj, boolean closed);

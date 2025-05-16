@@ -154,6 +154,20 @@ public class Model {
 
 
     //
+    // C++:  Model cv::dnn::Model::setOutputNames(vector_String outNames)
+    //
+
+    /**
+     * Set output names for frame.
+     * @param outNames Names for output layers.
+     * @return automatically generated
+     */
+    public Model setOutputNames(List<String> outNames) {
+        return new Model(setOutputNames_0(nativeObj, outNames));
+    }
+
+
+    //
     // C++:  void cv::dnn::Model::setInputParams(double scale = 1.0, Size size = Size(), Scalar mean = Scalar(), bool swapRB = false, bool crop = false)
     //
 
@@ -296,6 +310,9 @@ public class Model {
 
     // C++:  Model cv::dnn::Model::setInputSwapRB(bool swapRB)
     private static native long setInputSwapRB_0(long nativeObj, boolean swapRB);
+
+    // C++:  Model cv::dnn::Model::setOutputNames(vector_String outNames)
+    private static native long setOutputNames_0(long nativeObj, List<String> outNames);
 
     // C++:  void cv::dnn::Model::setInputParams(double scale = 1.0, Size size = Size(), Scalar mean = Scalar(), bool swapRB = false, bool crop = false)
     private static native void setInputParams_0(long nativeObj, double scale, double size_width, double size_height, double mean_val0, double mean_val1, double mean_val2, double mean_val3, boolean swapRB, boolean crop);

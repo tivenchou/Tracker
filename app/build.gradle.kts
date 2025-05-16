@@ -49,6 +49,29 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material)
+    implementation(libs.androidx.ui.tooling)
+    implementation(libs.androidx.ui.viewbinding)
+    testImplementation(libs.androidx.ui.test.junit4)
+    implementation(libs.androidx.activity)
+    implementation(libs.androidx.fragment)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.lifecycle.viewmodel)
+    implementation(libs.androidx.lifecycle.livedata)
+    implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.common)
+
+    implementation(libs.androidx.navigation.fragment)
+    implementation(libs.androidx.navigation.ui)
+    
+    // Google Mobile Ads SDK
+    implementation("com.google.android.gms:play-services-ads:23.0.0")
+    
+    // Guava for ListenableFuture
+    implementation("com.google.guava:guava:32.1.2-android")
 
     // CameraX dependencies
     implementation(libs.androidx.camera.core)
@@ -59,6 +82,7 @@ dependencies {
 
     // OpenCV Module
     implementation(project(":opencv"))
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
