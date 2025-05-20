@@ -45,6 +45,8 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.MobileAds
+import org.opencv.android.OpenCVLoader
+import java.time.InstantSource.system
 
 /**
  * 主活動，負責處理權限請求和設定 Compose UI。
@@ -75,6 +77,12 @@ class MainActivity : ComponentActivity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化OpenCV
+
+        System.loadLibrary("opencv_java4")
+        MobileAds.initialize(this)
+
+        Log.d("MainActivity", "onCreate: 開始執行")
         // 檢查相機權限
         checkCameraPermission()
 
@@ -99,11 +107,13 @@ class MainActivity : ComponentActivity() {
      * 檢查應用程式是否已獲得相機權限。
      */
     private fun checkCameraPermission() {
+        Log.d("MainActivity", "checkCameraPermission: 開始檢查權限")
         when (PackageManager.PERMISSION_GRANTED) {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
             ) -> {
+                Log.d("MainActivity", "checkCameraPermission: 相機權限已授予")
                 // 權限已授予
                 hasCameraPermissionState.value = true
             }
@@ -121,6 +131,7 @@ class MainActivity : ComponentActivity() {
      * 啟動權限請求流程。
      */
     private fun requestCameraPermission() {
+        Log.d("MainActivity", "requestCameraPermission: 請求相機權限")
         requestPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 }
@@ -237,7 +248,7 @@ fun ObjectTrackingScreen() {
                 factory = { context ->
                     AdView(context).apply {
                         setAdSize(AdSize.BANNER)
-                        adUnitId = "ca-app-pub-3940256099942544/6300978111" // 測試廣告ID
+                        adUnitId = "ca-app-pub-3940256099942544~6300978111" // 測試廣告ID
                         loadAd(AdRequest.Builder().build())
                     }
                 }

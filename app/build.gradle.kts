@@ -16,6 +16,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++11 -frtti -fexceptions")
+                val opencvsdk = "./opencv"
+                arguments("-DOpenCV_DIR=${opencvsdk}/native/jni") // , "-DANDROID_ARM_NEON=TRUE"
+            }
+        }
+    
     }
 
     buildTypes {
@@ -37,6 +45,12 @@ android {
     buildFeatures {
         compose = true
     }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
 }
 
 dependencies {
@@ -80,8 +94,8 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
 
-    // OpenCV Module
-    implementation(project(":opencv"))
+    // OpenCV SDK
+    implementation("org.opencv:opencv:4.11.0")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

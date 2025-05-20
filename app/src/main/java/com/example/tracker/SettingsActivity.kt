@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.text.SimpleDateFormat
@@ -95,6 +96,9 @@ fun SettingsScreen() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         enableRecording = isGranted
+        if (!isGranted) {
+            Toast.makeText(context, "需要儲存權限才能啟用錄影功能", Toast.LENGTH_SHORT).show()
+        }
     }
     
     // 選擇資料夾的Launcher
