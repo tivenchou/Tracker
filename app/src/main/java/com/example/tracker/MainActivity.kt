@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import android.content.Intent
+import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +56,11 @@ import java.time.InstantSource.system
  * 主活動，負責處理權限請求和設定 Compose UI。
  */
 class MainActivity : ComponentActivity() {
+    // 可變狀態，用於追蹤相機權限是否已授予
+    private val hasCameraPermissionState = mutableStateOf(false)
+
+    // 可變狀態，用於追蹤儲存權限是否已授予
+    private val hasStoragePermissionState = mutableStateOf(false)
 
     // ActivityResultLauncher 用於請求相機權限
     private val requestCameraPermissionLauncher = registerForActivityResult(
@@ -63,13 +69,13 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             // 權限已授予，更新狀態
             hasCameraPermissionState.value = true
+            // 只有在相機權限被授予後才檢查儲存權限
+            checkStoragePermission()
         } else {
-            // 權限被拒絕，顯示提示訊息
-            Toast.makeText(
-                this,
-                "需要相機權限才能使用追蹤功能",
-                Toast.LENGTH_LONG
-            ).show()
+            // 權限被拒絕，直接跳轉到應用程式設定頁面
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:" + applicationContext.packageName)
+            startActivity(intent)
         }
     }
     
@@ -78,18 +84,63 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (!isGranted) {
-            // 權限被拒絕，顯示提示訊息
-            Toast.makeText(
-                this,
-                "需要儲存權限才能使用錄影功能",
-                Toast.LENGTH_LONG
-            ).show()
+            // 權限被拒絕，直接跳轉到應用程式設定頁面
+            try {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                intent.data = Uri.parse("package:" + applicationContext.packageName)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            } catch (e: Exception) {
+                // 如果跳轉失敗，嘗試使用更通用的設定頁面
+                try {
+                    val intent = Intent(Settings.ACTION_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+    
+    // 檢查儲存權限 (支援 Android 11+)
+    private fun checkStoragePermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 11+ 使用 MANAGE_EXTERNAL_STORAGE 權限
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    // 直接跳轉到所有檔案存取權限設定頁面
+                    val intent = Intent()
+                    intent.action = Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+                    intent.data = Uri.parse("package:" + applicationContext.packageName)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // 如果跳轉失敗，顯示提示並跳轉到應用程式詳細設定
+                    Toast.makeText(
+                        this,
+                        "請前往設定 > 應用程式 > 特殊應用程式存取權限 > 所有檔案存取權限，並啟用此應用程式",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    
+                    val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    fallbackIntent.data = Uri.parse("package:" + applicationContext.packageName)
+                    fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(fallbackIntent)
+                }
+            }
+        } else {
+            // Android 10 及以下版本使用傳統的 WRITE_EXTERNAL_STORAGE 權限
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestStoragePermission()
+            }
         }
     }
 
-    // 可變狀態，用於追蹤相機權限是否已授予
-    private var hasCameraPermission by mutableStateOf(false)
-    private val hasCameraPermissionState = mutableStateOf(false)
 
     /**
      * Activity 建立時呼叫。
@@ -105,6 +156,8 @@ class MainActivity : ComponentActivity() {
         Log.d("MainActivity", "onCreate: 開始執行")
         // 檢查相機權限
         checkCameraPermission()
+        
+        // 儲存權限檢查已移到相機權限回調中執行
 
         setContent {
             TrackerTheme {
@@ -113,7 +166,7 @@ class MainActivity : ComponentActivity() {
                     // 根據權限狀態顯示不同的畫面
                     if (hasCameraPermissionState.value) {
                         // 如果有權限，顯示物件追蹤畫面
-                        ObjectTrackingScreen()
+                        ObjectTrackingScreen(hasStoragePermissionState)
                     } else {
                         // 如果沒有權限，顯示權限請求提示畫面
                         PermissionRequestScreen { requestCameraPermission() }
@@ -122,6 +175,37 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * 當Activity恢復時重新檢查權限狀態
+     */
+    override fun onResume() {
+        super.onResume()
+        // 重新檢查相機和儲存權限狀態
+        hasCameraPermissionState.value = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        
+        // 重新檢查儲存權限狀態
+        val hasStoragePermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        
+        // 更新儲存權限狀態
+        hasStoragePermissionState.value = hasStoragePermission
+        
+        if (!hasStoragePermission) {
+            checkStoragePermission()
+        }
+    }
+    
+
 
     /**
      * 檢查應用程式是否已獲得相機權限。
@@ -186,7 +270,7 @@ fun PermissionRequestScreen(onRequestPermission: () -> Unit) {
  * 整合 CameraPreview 並繪製追蹤標記。
  */
 @Composable
-fun ObjectTrackingScreen() {
+fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
     val context = LocalContext.current
     // 追蹤到的物體中心座標狀態 (來自 OpenCV Point)，初始設為 null
     var trackedObjectPoint by remember { mutableStateOf<Point?>(null) }
@@ -205,11 +289,7 @@ fun ObjectTrackingScreen() {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // 儲存權限提示文字
-            if (ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
+            if (!hasStoragePermissionState.value) {
                 Text(
                     text = "沒有取得儲存權限，無法開啟錄影功能",
                     color = Color.Red,
@@ -218,14 +298,9 @@ fun ObjectTrackingScreen() {
             }
 
             // 設定按鈕
-            val hasStoragePermission = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-
             IconButton(
                 onClick = {
-                    if (hasStoragePermission) {
+                    if (hasStoragePermissionState.value) {
                         val intent = Intent(context, SettingsActivity::class.java)
                         context.startActivity(intent)
                     } else {
@@ -237,12 +312,12 @@ fun ObjectTrackingScreen() {
                         ).show()
                     }
                 },
-                enabled = hasStoragePermission
+                enabled = hasStoragePermissionState.value
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "設定",
-                    tint = if (hasStoragePermission) LocalContentColor.current else Color.Gray
+                    tint = if (hasStoragePermissionState.value) LocalContentColor.current else Color.Gray
                 )
             }
         }
