@@ -84,11 +84,13 @@ fun SettingsScreen() {
     }
     
     // 檢查是否有寫入外部儲存權限
-    val hasWritePermission = remember {
-        ContextCompat.checkSelfPermission(
-            context, 
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-        ) == PackageManager.PERMISSION_GRANTED
+    var hasWritePermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context, 
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        )
     }
     
     // 請求權限的Launcher

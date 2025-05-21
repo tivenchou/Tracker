@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,7 +38,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.tracker.ui.theme.TrackerTheme
 import org.opencv.core.Point
@@ -53,17 +56,34 @@ import java.time.InstantSource.system
  */
 class MainActivity : ComponentActivity() {
 
-    // ActivityResultLauncher 用於請求權限
-    private val requestPermissionLauncher = registerForActivityResult(
+    // ActivityResultLauncher 用於請求相機權限
+    private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
             // 權限已授予，更新狀態
             hasCameraPermissionState.value = true
         } else {
-            // 權限被拒絕
-            // 可以在這裡顯示提示訊息給使用者，告知功能無法使用
-            println("Camera permission denied")
+            // 權限被拒絕，顯示提示訊息
+            Toast.makeText(
+                this,
+                "需要相機權限才能使用追蹤功能",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    
+    // ActivityResultLauncher 用於請求儲存權限
+    private val requestStoragePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (!isGranted) {
+            // 權限被拒絕，顯示提示訊息
+            Toast.makeText(
+                this,
+                "需要儲存權限才能使用錄影功能",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -128,11 +148,19 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 啟動權限請求流程。
+     * 啟動相機權限請求流程。
      */
     private fun requestCameraPermission() {
         Log.d("MainActivity", "requestCameraPermission: 請求相機權限")
-        requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+        requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+    
+    /**
+     * 啟動儲存權限請求流程。
+     */
+    private fun requestStoragePermission() {
+        Log.d("MainActivity", "requestStoragePermission: 請求儲存權限")
+        requestStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
     }
 }
 
@@ -167,24 +195,54 @@ fun ObjectTrackingScreen() {
     var analysisHeight by remember { mutableStateOf(1) } // 避免除以零
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // 上方區域 - 設定按鈕
+        // 頂部區域 - 設定按鈕和權限提示
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // 儲存權限提示文字
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                Text(
+                    text = "沒有取得儲存權限，無法開啟錄影功能",
+                    color = Color.Red,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+
+            // 設定按鈕
+            val hasStoragePermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+
             IconButton(
                 onClick = {
-                    val intent = Intent(context, SettingsActivity::class.java)
-                    context.startActivity(intent)
-                }
+                    if (hasStoragePermission) {
+                        val intent = Intent(context, SettingsActivity::class.java)
+                        context.startActivity(intent)
+                    } else {
+                        // 顯示權限提示
+                        Toast.makeText(
+                            context,
+                            "需要STORAGE權限才能使用設定功能",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                enabled = hasStoragePermission
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "設定"
+                    contentDescription = "設定",
+                    tint = if (hasStoragePermission) LocalContentColor.current else Color.Gray
                 )
             }
         }
@@ -193,8 +251,7 @@ fun ObjectTrackingScreen() {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxSize(),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
         ) {
             CameraPreview(modifier = Modifier.fillMaxSize()) { point, width, height ->
                 // 更新追蹤到的點和分析尺寸
@@ -219,14 +276,20 @@ fun ObjectTrackingScreen() {
                     // 繪製水平線
                     drawLine(
                         color = Color.Red,
-                        start = Offset(centerOnDisplay.x - crosshairSize / 2, centerOnDisplay.y),
+                        start = Offset(
+                            centerOnDisplay.x - crosshairSize / 2,
+                            centerOnDisplay.y
+                        ),
                         end = Offset(centerOnDisplay.x + crosshairSize / 2, centerOnDisplay.y),
                         strokeWidth = 5f
                     )
                     // 繪製垂直線
                     drawLine(
                         color = Color.Red,
-                        start = Offset(centerOnDisplay.x, centerOnDisplay.y - crosshairSize / 2),
+                        start = Offset(
+                            centerOnDisplay.x,
+                            centerOnDisplay.y - crosshairSize / 2
+                        ),
                         end = Offset(centerOnDisplay.x, centerOnDisplay.y + crosshairSize / 2),
                         strokeWidth = 5f
                     )
@@ -234,7 +297,7 @@ fun ObjectTrackingScreen() {
             }
         }
 
-        // 下方區域 - 廣告
+        // 底部區域 - 廣告
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -253,8 +316,6 @@ fun ObjectTrackingScreen() {
                     }
                 }
             )
-
-
         }
     }
 }

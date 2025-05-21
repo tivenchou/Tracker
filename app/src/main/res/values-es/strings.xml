@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Tracker</string>
+    <string name="settings">Configuración</string>
+    <string name="storage_permission_denied">Permiso de almacenamiento denegado, no se puede habilitar la función de grabación</string>
+</resources>

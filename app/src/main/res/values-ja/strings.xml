@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Tracker</string>
+    <string name="settings">設定</string>
+    <string name="storage_permission_denied">ストレージ権限が拒否されました、録画機能を有効にできません</string>
+</resources>
