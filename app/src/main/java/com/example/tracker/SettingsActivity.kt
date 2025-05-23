@@ -27,13 +27,15 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-
+import androidx.lifecycle.Observer
 /**
  * 設定頁面的Activity，處理錄影相關設定
  */
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.tracker.ui.theme.TrackerTheme
 
 class SettingsActivity : ComponentActivity() {
@@ -52,16 +54,7 @@ class SettingsActivity : ComponentActivity() {
         }
     }
 
-    companion object {
-        fun updateSettings(
-            enableRecording: Boolean,
-            startDelay: Int,
-            stopDelay: Int,
-            savePath: String
-        ) {
-            // 實作更新設定的邏輯
-        }
-    }
+    
 }
 
 /**
@@ -120,7 +113,19 @@ fun SettingsScreen() {
             savePath = DocumentFile.fromTreeUri(context, it)?.name ?: savePath
         }
     }
-    
+
+    val lifecycleOwner = LocalLifecycleOwner.current // Get the LifecycleOwner
+
+    // Inside your SettingsScreen Composable
+    var sharedViewModel = (context.applicationContext as MyApplication).getSharedViewModel()
+    sharedViewModel.sharedEnableRecording.observe(lifecycleOwner, Observer { data ->  enableRecording = data ?: false})
+    sharedViewModel.sharedStartDelay.observe(lifecycleOwner, Observer { data ->  startDelay = data ?: 5})
+    sharedViewModel.sharedStopDelay.observe(lifecycleOwner, Observer { data ->  stopDelay = data ?: 5})
+    sharedViewModel.sharedSavePath.observe(lifecycleOwner, Observer { data ->  savePath = data ?: savePath})
+
+    // 觀察數據變化
+//    sharedViewModel.sharedEnableRecording.observe(this, Observer { data -> enableRecording = data ?: false})
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -204,15 +209,15 @@ fun SettingsScreen() {
         
         // 返回按鈕
         Button(
-            onClick = { 
-                // 將設定值傳遞給CameraPreview
-                SettingsActivity.updateSettings(
-                    enableRecording,
-                    startDelay,
-                    stopDelay,
-                    savePath
-                )
-                (context as? Activity)?.finish() 
+            onClick = {
+                // 發送 Activity
+                // 獲取 Application 級別的 ViewModel
+  //              var sharedViewModel = (application as MyApplication).getSharedViewModel()
+                sharedViewModel.setSharedEnableRecording(enableRecording)
+                sharedViewModel.setSharedStartDelay(startDelay)
+                sharedViewModel.setSharedStopDelay(stopDelay)
+                sharedViewModel.setSharedSavePath(savePath)
+                (context as? Activity)?.finish()
             },
             modifier = Modifier
                 .fillMaxWidth()
