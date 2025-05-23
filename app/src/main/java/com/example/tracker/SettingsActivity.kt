@@ -33,6 +33,7 @@ import java.util.*
  */
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.tracker.ui.theme.TrackerTheme
 
 class SettingsActivity : ComponentActivity() {
@@ -90,10 +91,14 @@ fun SettingsScreen() {
     // 檢查是否有寫入外部儲存權限
     var hasWritePermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, 
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                ContextCompat.checkSelfPermission(
+                    context, 
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            }
         )
     }
     
@@ -141,6 +146,7 @@ fun SettingsScreen() {
                     if (hasWritePermission) {
                         enableRecording = it
                     } else {
+                        enableRecording = false
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                             requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                         } else {
