@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -286,7 +287,7 @@ fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
                 .height(56.dp)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.End
         ) {
             // 儲存權限提示文字
             if (!hasStoragePermissionState.value) {
@@ -295,6 +296,8 @@ fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
                     color = Color.Red,
                     modifier = Modifier.padding(end = 8.dp)
                 )
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
             }
 
             // 設定按鈕

@@ -106,7 +106,7 @@ fun CameraPreview(
                     .build()
                     .also {
                         Log.d("CameraPreview", "ImageAnalysis built, setting analyzer...")
-                        it.setAnalyzer(cameraExecutor, ObjectTrackerAnalyzer(onObjectTracked))
+                        it.setAnalyzer(cameraExecutor, ObjectTrackerAnalyzer(context, onObjectTracked))
                         Log.d("CameraPreview", "Analyzer set for ImageAnalysis.")
                     }
 
@@ -175,7 +175,7 @@ fun CameraPreview(
  * 使用光流法 (Farneback) 偵測移動物體。
  * @param onObjectTracked 回調函數，傳遞追蹤到的物體中心點座標 (相對於預覽畫面)，如果未偵測到則傳遞 null。
  */
-private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, Int) -> Unit) : ImageAnalysis.Analyzer {
+private class ObjectTrackerAnalyzer(private val context: Context, private val onObjectTracked: (Point?, Int, Int) -> Unit) : ImageAnalysis.Analyzer {
     // 錄影相關狀態
     private var isRecording = false
     private var recordingStartTime = 0L
@@ -241,8 +241,17 @@ private class ObjectTrackerAnalyzer(private val onObjectTracked: (Point?, Int, I
         if (!enableRecording || isRecording) return
         
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "Tracker_${timestamp}.mp4"
-        outputFile = File(savePath, fileName)
+    val fileName = "Tracker_${timestamp}.mp4"
+    
+    // 優先嘗試SD卡
+    val externalDir = if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+    } else {
+        // 次選內部儲存
+        context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+    }
+    
+    outputFile = File(externalDir, fileName)
         
         try {
             videoWriter = org.opencv.videoio.VideoWriter(outputFile?.absolutePath, videoWriterCodec, 30.0, 

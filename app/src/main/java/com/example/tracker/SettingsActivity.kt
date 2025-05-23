@@ -76,10 +76,14 @@ fun SettingsScreen() {
     var stopDelay by remember { mutableStateOf(5) } // 預設5秒
     var savePath by remember { 
         mutableStateOf(
-            File(
-                context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), 
-                "Tracker"
-            ).absolutePath
+            // 優先檢查SD卡是否存在
+            if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
+                // SD卡可用，使用SD卡上的Movies目錄
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "Tracker").absolutePath
+            } else {
+                // SD卡不可用，使用內部儲存
+                File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "Tracker").absolutePath
+            }
         ) 
     }
     
