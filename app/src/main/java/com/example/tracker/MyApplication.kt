@@ -1,16 +1,24 @@
 package com.example.tracker
 
 import android.app.Application
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider // Ensure this is the correct import
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 
 // MyApplication.kt
-class MyApplication : Application() {
-
-    // 在這裡放置 Application 級別的 ViewModel 獲取方法
-    fun getSharedViewModel(): SharedViewModel {
-        return ViewModelProvider.AndroidViewModelFactory.getInstance(this)
-            .create(SharedViewModel::class.java)
+class MyApplication : Application(), ViewModelStoreOwner {
+    // Override the viewModelStore property from ViewModelStoreOwner
+    override val viewModelStore: ViewModelStore by lazy {
+        ViewModelStore()
     }
 
-    // 其他 Application 初始化代碼...
+
+    // Initialize sharedViewModel directly
+     val sharedViewModel: SharedViewModel by lazy {
+        ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory.getInstance(this))
+            .get(SharedViewModel::class.java)
+    }
+
+
+    // Other Application initialization code...
 }

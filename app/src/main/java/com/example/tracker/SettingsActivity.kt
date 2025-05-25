@@ -41,6 +41,7 @@ import com.example.tracker.ui.theme.TrackerTheme
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             TrackerTheme {
                 // A surface container using the 'background' color from the theme
@@ -55,7 +56,10 @@ class SettingsActivity : ComponentActivity() {
     }
 
     
-}
+} // class SettingsActivity
+
+
+private lateinit var sharedViewModel: SharedViewModel
 
 /**
  * 設定頁面的Composable
@@ -115,9 +119,8 @@ fun SettingsScreen() {
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current // Get the LifecycleOwner
-
     // Inside your SettingsScreen Composable
-    var sharedViewModel = (context.applicationContext as MyApplication).getSharedViewModel()
+    sharedViewModel = (context.applicationContext as MyApplication).sharedViewModel
     sharedViewModel.sharedEnableRecording.observe(lifecycleOwner, Observer { data ->  enableRecording = data ?: false})
     sharedViewModel.sharedStartDelay.observe(lifecycleOwner, Observer { data ->  startDelay = data ?: 5})
     sharedViewModel.sharedStopDelay.observe(lifecycleOwner, Observer { data ->  stopDelay = data ?: 5})
