@@ -2,7 +2,6 @@ package com.example.tracker
 
 import android.content.Context
 import android.util.Log
-import android.util.Size // <-- 新增導入
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -35,6 +34,8 @@ import java.util.Date
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import org.opencv.core.Scalar
 import org.opencv.imgproc.Moments // 修正導入
 import org.opencv.imgproc.Imgproc
@@ -49,16 +50,23 @@ import org.opencv.core.TermCriteria // 新增導入 for 光流法
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import com.google.common.util.concurrent.ListenableFuture
+import org.opencv.core.Size
+
+
 
 /**
  * 顯示相機預覽畫面的 Composable。
  * @param modifier Modifier for this composable.
  * @param onObjectTracked 回調函數，用於處理分析到的物體中心點 (Point?) 和分析尺寸。
  */
+
+
+
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
-    onObjectTracked: (point: Point?, analysisWidth: Int, analysisHeight: Int) -> Unit // 傳遞中心點和分析尺寸
+    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current, // 新增預設參數
+    onObjectTracked: (point: Point?, analysisWidth: Int, analysisHeight: Int, isRecording: Boolean, enableRecording: Boolean) -> Unit // 傳遞中心點和分析尺寸
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -105,11 +113,8 @@ fun CameraPreview(
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
-                        Log.d("CameraPreview", "ImageAnalysis built, setting analyzer...")
-                        it.setAnalyzer(cameraExecutor, ObjectTrackerAnalyzer(context, onObjectTracked))
-                        Log.d("CameraPreview", "Analyzer set for ImageAnalysis.")
+                        it.setAnalyzer(cameraExecutor, ObjectTrackerAnalyzer(context, lifecycleOwner, onObjectTracked))
                     }
-
                 Log.d("CameraPreview", "Attempting to bind camera use cases to lifecycle...")
                 cameraProvider.unbindAll() // 修正為正確的API調用
                 Log.d("CameraPreview", "Unbound all previous use cases.")
@@ -175,12 +180,16 @@ fun CameraPreview(
  * 使用光流法 (Farneback) 偵測移動物體。
  * @param onObjectTracked 回調函數，傳遞追蹤到的物體中心點座標 (相對於預覽畫面)，如果未偵測到則傳遞 null。
  */
-private class ObjectTrackerAnalyzer(private val context: Context, private val onObjectTracked: (Point?, Int, Int) -> Unit) : ImageAnalysis.Analyzer {
+private class ObjectTrackerAnalyzer(
+    private val context: Context,
+    private val lifecycleOwner: LifecycleOwner, // 新增此參數
+    private val onObjectTracked: (Point?, Int, Int, Boolean, Boolean) -> Unit
+) : ImageAnalysis.Analyzer {
     // 錄影相關狀態
-    private var isRecording = false
     private var recordingStartTime = 0L
     private var recordingStopTime = 0L
     private var lastDetectedTime = 0L
+    private var lastUnDetectedTime = 0L
     private var videoWriter: org.opencv.videoio.VideoWriter? = null
     // 使用VideoWriter的create方法替代直接建構函式
     private var outputFile: File? = null
@@ -216,49 +225,65 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
     }
     
     // 錄影設定 (從設定頁面獲取)
+    private var isRecording by mutableStateOf(false)
     private var enableRecording by mutableStateOf(false)
     private var startDelay by mutableStateOf(5000) // 預設5秒
     private var stopDelay by mutableStateOf(5000) // 預設5秒
     private var savePath by mutableStateOf(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES).absolutePath
     )
-    
-    // 從設定頁面接收參數
-    fun updateSettings(
-        enableRecording: Boolean,
-        startDelay: Int,
-        stopDelay: Int,
-        savePath: String
-    ) {
-        this.enableRecording = enableRecording
-        this.startDelay = startDelay * 1000 // 轉換為毫秒
-        this.stopDelay = stopDelay * 1000 // 轉換為毫秒
-        this.savePath = savePath
+    private lateinit var sharedViewModel: SharedViewModel
+
+    init {
+        sharedViewModel = (context.applicationContext as MyApplication).sharedViewModel
+        sharedViewModel.sharedEnableRecording.observe(lifecycleOwner, Observer { data ->  enableRecording = data ?: false})
+        sharedViewModel.sharedIsRecording.observe(lifecycleOwner, Observer { data ->  isRecording = data ?: false})
     }
     
     // 錄影控制方法
     private fun startRecording() {
-        if (!enableRecording || isRecording) return
+        if (!enableRecording || isRecording) {
+            Log.d("ObjectTrackerAnalyzer", "Recording not started: enableRecording=$enableRecording, isRecording=$isRecording")
+            return
+        }
+        
+        // 新增路徑檢查
+        if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            Log.e("ObjectTrackerAnalyzer", "Storage not mounted")
+            return
+        }
+        
+        // 改用createVideoWriter方法
+        videoWriter = createVideoWriter(
+            outputFile?.absolutePath ?: return,
+            videoWriterCodec,
+            30.0,
+            org.opencv.core.Size(rotatedMat.width().toDouble(), rotatedMat.height().toDouble()),
+            true
+        ) ?: return
         
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-    val fileName = "Tracker_${timestamp}.mp4"
-    
-    // 優先嘗試SD卡
-    val externalDir = if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-    } else {
-        // 次選內部儲存
-        context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
-    }
-    
-    outputFile = File(externalDir, fileName)
+        val fileName = "Tracker_${timestamp}.mp4"
+        
+        Log.d("ObjectTrackerAnalyzer", "Attempting to start recording with filename: $fileName")
+        
+        val externalDir = if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
+            Log.d("ObjectTrackerAnalyzer", "Using external storage")
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+        } else {
+            Log.d("ObjectTrackerAnalyzer", "Using internal storage")
+            context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+        }
+        
+        outputFile = File(externalDir, fileName)
+        Log.d("ObjectTrackerAnalyzer", "Output file path: ${outputFile?.absolutePath}")
         
         try {
             videoWriter = org.opencv.videoio.VideoWriter(outputFile?.absolutePath, videoWriterCodec, 30.0, 
                 org.opencv.core.Size(rotatedMat.width().toDouble(), rotatedMat.height().toDouble()))
             isRecording = true
             recordingStartTime = System.currentTimeMillis()
-            Log.d("ObjectTrackerAnalyzer", "Recording started: ${outputFile?.absolutePath}")
+            Log.d("ObjectTrackerAnalyzer", "Recording successfully started")
         } catch (e: Exception) {
             Log.e("ObjectTrackerAnalyzer", "Failed to start recording", e)
             videoWriter?.release()
@@ -267,7 +292,10 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
     }
     
     private fun stopRecording() {
-        if (!isRecording) return
+        if (!isRecording) {
+            Log.d("ObjectTrackerAnalyzer", "Recording not stopped: isRecording=$isRecording")
+            return
+        }
         
         try {
             videoWriter?.release()
@@ -364,7 +392,7 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
         yBuffer.get(nv21, 0, ySize)
         // 注意：對於 NV21，U 和 V 平面是交錯的。但 CameraX 通常提供 I420 或類似格式，其中 U 和 V 是分開的。
         // 這裡假設 U 和 V 平面數據可以直接拼接。如果格式不同，轉換邏輯需要調整。
-        // 為了簡化，這裡假設 plane[1] 是 U，plane[2] 是 V，並且它們的 rowStride 和 pixelStride 允許直接複製。
+        // 這裡假設 plane[1] 是 U，plane[2] 是 V，並且它們的 rowStride 和 pixelStride 允許直接複製。
         // 實際上，更可靠的方法是使用 ImageUtil 或類似庫來處理 YUV 到 RGB/Grayscale 的轉換。
         // 這裡我們直接將 Y 平面作為灰度圖使用，因為背景扣除通常在灰度圖上操作。
 
@@ -453,7 +481,7 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
                     Log.w("ObjectTrackerAnalyzer", "Camera shake detected (movement: $avgMovement > threshold: $shakeThreshold)")
                     currentHistory = kotlin.math.max(minHistory, currentHistory - historyStep)
                     // 如果晃動過大，則跳過物件偵測
-                    onObjectTracked(null, rotatedMat.width(), rotatedMat.height())
+                    onObjectTracked(null, rotatedMat.width(), rotatedMat.height(), isRecording ,enableRecording)
                     // 更新 prevGrayMat 和 prevPoints 以便下一幀比較
                     rotatedMat.copyTo(prevGrayMat)
                     // 重新偵測特徵點，因為畫面可能已大幅改變
@@ -507,7 +535,7 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
 
         if (fgMask.empty()) {
             Log.d("ObjectTrackerAnalyzer", "Foreground mask is empty.")
-            onObjectTracked(null, rotatedMat.width(), rotatedMat.height())
+            onObjectTracked(null, rotatedMat.width(), rotatedMat.height(), isRecording, enableRecording)
             image.close()
             return
         }
@@ -573,15 +601,17 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
         // 錄影控制邏輯
         val currentTime = System.currentTimeMillis()
         if (centerPoint != null) {
-            lastDetectedTime = currentTime
-            
+            lastUnDetectedTime = currentTime
+            Log.d("Recording", "lastUnDetectedTime: $lastUnDetectedTime")
             // 如果偵測到物體且未開始錄影，檢查是否達到開始延遲
-            if (!isRecording && enableRecording && currentTime - lastDetectedTime >= startDelay) {
+            if (!isRecording && enableRecording && ((currentTime - lastDetectedTime) >= startDelay)) {
                 startRecording()
             }
         } else {
+            lastDetectedTime = currentTime
+            Log.d("Recording", "lastDetectedTime: $lastDetectedTime")
             // 如果未偵測到物體且正在錄影，檢查是否達到停止延遲
-            if (isRecording && currentTime - lastDetectedTime >= stopDelay) {
+            if (isRecording && ((currentTime - lastUnDetectedTime) >= stopDelay)) {
                 stopRecording()
             }
         }
@@ -600,7 +630,7 @@ private class ObjectTrackerAnalyzer(private val context: Context, private val on
         }
 
         // 回調結果
-        onObjectTracked(centerPoint, rotatedMat.width(), rotatedMat.height())
+        onObjectTracked(centerPoint, rotatedMat.width(), rotatedMat.height(),isRecording, enableRecording)
         image.close()
         Log.d("ObjectTrackerAnalyzer", "analyze() finished")
     }

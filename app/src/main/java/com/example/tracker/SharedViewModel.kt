@@ -11,10 +11,12 @@ import androidx.lifecycle.ViewModel
 class SharedViewModel : ViewModel(){
     // 使用 LiveData 來觀察數據變化
     private val _sharedEnableRecording = MutableLiveData<Boolean>()
+    private val _sharedIsRecording = MutableLiveData<Boolean>()
     private val _sharedStartDelay = MutableLiveData<Int>()
     private val _sharedStopDelay = MutableLiveData<Int>()
     private val _sharedSavePath = MutableLiveData<String>()
     val sharedEnableRecording: LiveData<Boolean> get() = _sharedEnableRecording
+    val sharedIsRecording: LiveData<Boolean> get() = _sharedIsRecording
     val sharedStartDelay: LiveData<Int> get() = _sharedStartDelay
     val sharedStopDelay: LiveData<Int> get() = _sharedStopDelay
     val sharedSavePath: LiveData<String> get() = _sharedSavePath
@@ -22,6 +24,10 @@ class SharedViewModel : ViewModel(){
     // 設置數據的方法
     fun setSharedEnableRecording(data: Boolean) {
         _sharedEnableRecording.value = data
+    }
+
+    fun setSharedIsRecording(data: Boolean) {
+        _sharedIsRecording.value = data
     }
 
     fun setSharedStartDelay(data: Int) {

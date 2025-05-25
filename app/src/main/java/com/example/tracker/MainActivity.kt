@@ -52,6 +52,13 @@ import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.MobileAds
 import org.opencv.android.OpenCVLoader
 import java.time.InstantSource.system
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /**
  * 主活動，負責處理權限請求和設定 Compose UI。
@@ -278,6 +285,8 @@ fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
     // 分析幀的尺寸
     var analysisWidth by remember { mutableStateOf(1) } // 避免除以零
     var analysisHeight by remember { mutableStateOf(1) } // 避免除以零
+    // 新增錄影狀態
+    var isRecording by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 頂部區域 - 設定按鈕和權限提示
@@ -331,7 +340,7 @@ fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
                 .weight(1f)
                 .fillMaxSize()
         ) {
-            CameraPreview(modifier = Modifier.fillMaxSize()) { point, width, height ->
+            CameraPreview(modifier = Modifier.fillMaxSize()) { point, width, height, isRecording, enableRecording ->
                 // 更新追蹤到的點和分析尺寸
                 trackedObjectPoint = point
                 if (width > 0) analysisWidth = width
@@ -373,6 +382,39 @@ fun ObjectTrackingScreen(hasStoragePermissionState: MutableState<Boolean>) {
                     )
                 }
             }
+
+            // 顯示「錄影中」圖示
+            if (isRecording) {
+                Box(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .align(Alignment.TopEnd)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                color = Color(0x99FF0000), // 半透明紅色背景
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(Color.Red, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "錄影中",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
         }
 
         // 底部區域 - 廣告
